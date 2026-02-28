@@ -1,12 +1,5 @@
-# VSCode MultiData by Adam Natad (Compact + Responsive + Stable)
-# ------------------------------------------------------------------------------
-# Fixes:
-# - ConfigParser % crash (ui_scale=200%) by disabling interpolation
-# - Compact responsive UI (tree expands, right panel stays narrow)
-# - Removed all icons (cleaner look)
-#
-# Build: from project root run  python build.py  (output: output/VSCodeMultiData-Portable.zip, output/VSCodeMultiData-Setup.exe)
-# App lives in src/; build script and installer script in build/.
+# VSCode MultiData by Adam Natad
+# Build from project root: python build.py → output/VSCodeMultiData-Portable.zip, output/VSCodeMultiData-Setup.exe
 
 from __future__ import annotations
 
@@ -27,12 +20,10 @@ APP_NAME = "VSCode MultiData by Adam Natad"
 CONFIG_FILENAME = "config.ini"
 REPORT_BUGS_URL = "https://github.com/AdamNatad/VSCodeMultiData/issues"
 
-_app_ref: "App | None" = None  # Set by App for global excepthook
+_app_ref: "App | None" = None  # used by excepthook
 
 
-# -----------------------------
-# Helpers
-# -----------------------------
+# --- Helpers ---
 
 def os_name() -> str:
     return platform.system()
@@ -47,7 +38,7 @@ def config_path() -> str:
 
 
 def app_icon_path() -> str:
-    """Path to app.ico for main window and dialogs (dev or PyInstaller)."""
+    """app.ico path (dev or frozen)."""
     return os.path.join(getattr(sys, "_MEIPASS", app_dir()), "app.ico")
 
 def crash_log_path() -> str:
@@ -61,7 +52,7 @@ def ensure_dir(path: str) -> None:
 
 
 def get_windows_dpi() -> int:
-    """Return Windows logical DPI (e.g. 96, 120, 144) for UI scale Auto. Non-Windows returns 96."""
+    """Windows logical DPI for UI scale Auto; 96 when not Windows."""
     if platform.system() != "Windows":
         return 96
     try:
@@ -70,7 +61,7 @@ def get_windows_dpi() -> int:
         hdc = user32.GetDC(0)
         if not hdc:
             return 96
-        dpi = gdi32.GetDeviceCaps(hdc, 88)  # LOGPIXELSX
+        dpi = gdi32.GetDeviceCaps(hdc, 88)
         user32.ReleaseDC(0, hdc)
         return int(dpi) if dpi and int(dpi) > 0 else 96
     except Exception:
@@ -98,15 +89,12 @@ def split_args(extra: str) -> list[str]:
         return extra.split()
 
 
-# -----------------------------
-# VS Code detection
-# -----------------------------
+# --- VS Code detection ---
 
 def vscode_candidates() -> list[str]:
     cands: list[str] = []
 
     if os_name() == "Windows":
-        # Prefer Code.exe first
         cands += [
             r"C:\Program Files\Microsoft VS Code\Code.exe",
             r"C:\Program Files (x86)\Microsoft VS Code\Code.exe",
@@ -118,7 +106,6 @@ def vscode_candidates() -> list[str]:
                 os.path.join(local, r"Programs\Microsoft VS Code Insiders\Code - Insiders.exe"),
             ]
 
-        # CLI fallbacks last
         which_code = shutil.which("code.cmd") or shutil.which("code.exe") or shutil.which("code")
         if which_code:
             cands.append(which_code)
@@ -160,9 +147,7 @@ def is_executable_path(p: str) -> bool:
     return bool(p) and (os.path.isfile(p) or shutil.which(p))
 
 
-# -----------------------------
-# Config + Model
-# -----------------------------
+# --- Config + model ---
 
 class Profile:
     def __init__(self, name: str, user_data: str, extensions: str):
@@ -177,7 +162,7 @@ class Profile:
 class ConfigManager:
     def __init__(self, path: str):
         self.path = path
-        # IMPORTANT: disable interpolation so "200%" doesn't crash
+        # no interpolation (e.g. 200% in values)
         self.cfg = configparser.ConfigParser(interpolation=None)
 
     def _default_base_dir(self) -> str:
@@ -257,9 +242,7 @@ class ConfigManager:
             del self.cfg["profiles"][name]
 
 
-# -----------------------------
-# Profile editor dialog (compact)
-# -----------------------------
+# --- Profile editor ---
 
 class ProfileEditor(tk.Toplevel):
     def __init__(self, master: tk.Tk, title: str, initial: Profile | None, base_dir: str):
@@ -317,7 +300,7 @@ class ProfileEditor(tk.Toplevel):
         self.focus_force()
 
     def _center_on(self, master: tk.Tk) -> None:
-        """Center this window on the master window."""
+        """Center on master."""
         self.update_idletasks()
         w = self.winfo_width()
         h = self.winfo_height()
@@ -362,12 +345,9 @@ class ProfileEditor(tk.Toplevel):
         self.destroy()
 
 
-# -----------------------------
-# Styled delete confirmation dialog
-# -----------------------------
+# --- Delete confirm ---
 
 class DeleteConfirmDialog(tk.Toplevel):
-    """Themed confirmation dialog so it doesn't look like a default messagebox."""
 
     def __init__(self, master: "App", profile_name: str):
         super().__init__(master)
@@ -435,12 +415,9 @@ class DeleteConfirmDialog(tk.Toplevel):
         self.destroy()
 
 
-# -----------------------------
-# Styled Save confirmation dialog
-# -----------------------------
+# --- Save confirm ---
 
 class SaveConfirmDialog(tk.Toplevel):
-    """Themed confirmation for saving configuration; follows app dark/light theme."""
 
     def __init__(self, master: "App"):
         super().__init__(master)
@@ -506,12 +483,9 @@ class SaveConfirmDialog(tk.Toplevel):
         self.destroy()
 
 
-# -----------------------------
-# Report bugs / issues modal
-# -----------------------------
+# --- Report bugs ---
 
 class ReportBugsDialog(tk.Toplevel):
-    """Themed dialog to report bugs or post issues at GitHub; optional error_message for global excepthook."""
 
     def __init__(self, master: "App", error_message: str | None = None):
         super().__init__(master)
@@ -566,12 +540,9 @@ class ReportBugsDialog(tk.Toplevel):
         self.geometry(f"+{x}+{y}")
 
 
-# -----------------------------
-# Save and relaunch confirmation (Yes / No)
-# -----------------------------
+# --- Save and relaunch (UI scale) ---
 
 class SaveAndRelaunchConfirmDialog(tk.Toplevel):
-    """Yes/No dialog: save config and relaunch the app to apply UI scale."""
 
     def __init__(self, master: "App"):
         super().__init__(master)
@@ -632,12 +603,9 @@ class SaveAndRelaunchConfirmDialog(tk.Toplevel):
         self.destroy()
 
 
-# -----------------------------
-# Styled info dialog (one button)
-# -----------------------------
+# --- Info dialog ---
 
 class InfoDialog(tk.Toplevel):
-    """Themed info message; follows app dark/light theme."""
 
     def __init__(self, master: "App", title: str, message: str):
         super().__init__(master)
@@ -680,15 +648,12 @@ class InfoDialog(tk.Toplevel):
         self.geometry(f"+{x}+{y}")
 
 
-# -----------------------------
-# Main App (compact + responsive)
-# -----------------------------
+# --- Main app ---
 
 class App(tk.Tk):
     THEME_OPTIONS = ["Dark", "Light"]
     SCALE_OPTIONS = ["Auto", "100%", "125%", "150%", "175%", "200%", "225%", "250%", "300%"]
-    # Minimum size so the right action menu is always visible; window cannot be resized smaller
-    MIN_WIDTH = 1024
+    MIN_WIDTH = 1024  # right rail stays visible
     MIN_HEIGHT = 620
 
     @staticmethod
@@ -700,10 +665,9 @@ class App(tk.Tk):
         return (self.var_theme.get() or "").strip().lower() == "dark"
 
     def __init__(self):
-        # DPI awareness on Windows can reduce pixelation
         if platform.system() == "Windows":
             try:
-                ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)
             except Exception:
                 try:
                     ctypes.windll.user32.SetProcessDPIAware()
@@ -736,7 +700,6 @@ class App(tk.Tk):
 
         self.status = tk.StringVar(value=f"Config: {config_path()}")
 
-        # Fonts
         self.base_font = tkfont.nametofont("TkDefaultFont")
         if os_name() == "Windows":
             try:
@@ -744,7 +707,6 @@ class App(tk.Tk):
             except Exception:
                 pass
 
-        # Style
         self.style = ttk.Style(self)
         try:
             self.style.theme_use("clam")
@@ -753,11 +715,10 @@ class App(tk.Tk):
 
         self.palette = self._palette_dark() if self._theme_is_dark() else self._palette_light()
         self._apply_style()
-        self._apply_scale()  # Apply before building UI so scaling is correct from the start
+        self._apply_scale()
         self._build_ui()
         self._refresh_list()
 
-        # Start centered on screen
         self.update_idletasks()
         w = self.winfo_width()
         h = self.winfo_height()
@@ -767,14 +728,14 @@ class App(tk.Tk):
         y = max(0, (sh - h) // 2)
         self.geometry(f"+{x}+{y}")
 
-        # fix “dotted focus” look: prevent focus by default
+        # “dotted focus” look: prevent focus by default
         self.bind_all("<Button-1>", self._defocus_on_click, add="+")
 
         global _app_ref
         _app_ref = self
 
     def _enforce_min_size(self, event=None):
-        """Keep window from being resized smaller than MIN so the right menu stays visible."""
+        """Clamp to MIN_WIDTH x MIN_HEIGHT."""
         if event and event.widget != self:
             return
         w = self.winfo_width()
@@ -783,7 +744,6 @@ class App(tk.Tk):
             self.geometry(f"{max(w, self.MIN_WIDTH)}x{max(h, self.MIN_HEIGHT)}")
 
     def _defocus_on_click(self, e):
-        # keep focus from sticking on buttons (less ugly on ttk/clam); skip when clicking a button to avoid extra work
         try:
             if isinstance(e.widget, ttk.Button):
                 return
@@ -847,14 +807,12 @@ class App(tk.Tk):
         self.style.configure("TFrame", background=p["bg"])
         self.style.configure("TLabel", background=p["bg"], foreground=p["text"])
         self.style.configure("Muted.TLabel", background=p["bg"], foreground=p["muted"])
-        # Labels on cards must use panel background so they don't show a different color
         self.style.configure("Card.TLabel", background=p["panel"], foreground=p["text"])
         self.style.configure("Warning.TLabel", background=p["panel"], foreground=p["warning"], font=(self.base_font.cget("family"), self.base_font.cget("size"), "normal"))
 
         self.style.configure("Card.TFrame", background=p["panel"], relief="flat", borderwidth=1)
 
         self.style.configure("TEntry", fieldbackground=p["field"], foreground=p["text"])
-        # Dropdown (Combobox): theme-matched border and padding so it doesn't look broken
         self.style.configure(
             "TCombobox",
             fieldbackground=p["field"],
@@ -890,7 +848,6 @@ class App(tk.Tk):
             ],
         )
 
-        # Buttons: theme-matched border (dark theme = light border, light theme = dark border)
         self.style.configure(
             "TButton",
             background=p["panel2"],
@@ -958,7 +915,6 @@ class App(tk.Tk):
         if forced is not None:
             self.tk.call("tk", "scaling", forced)
         else:
-            # Auto: use Windows DPI so scale matches the system
             dpi = get_windows_dpi()
             self.tk.call("tk", "scaling", dpi / 72.0)
         self.update_idletasks()
@@ -976,7 +932,6 @@ class App(tk.Tk):
         root.columnconfigure(0, weight=1)
         root.rowconfigure(1, weight=1)
 
-        # ---- Top panel (compact)
         top = ttk.Frame(root, style="Card.TFrame", padding=6)
         top.grid(row=0, column=0, sticky="ew")
         top.columnconfigure(1, weight=1)
@@ -992,7 +947,6 @@ class App(tk.Tk):
         self.entry_base_dir.grid(row=1, column=1, sticky="ew", padx=(6, 6), pady=(6, 0))
         ttk.Button(top, text="Browse", command=self._browse_base, takefocus=False, cursor="hand2").grid(row=1, column=2, padx=(0, 4), pady=(6, 0))
 
-        # Read-only: change only via Browse/Detect
         self.entry_vscode_path.config(state="disabled")
         self.entry_base_dir.config(state="disabled")
 
@@ -1009,13 +963,11 @@ class App(tk.Tk):
         scale.grid(row=1, column=1, sticky="e", pady=(6, 0))
         scale.bind("<<ComboboxSelected>>", lambda _e: self._on_scale_change())
 
-        # ---- Middle panel
         mid = ttk.Frame(root, style="Card.TFrame", padding=8)
         mid.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
         mid.columnconfigure(0, weight=1)
         mid.rowconfigure(0, weight=1)
 
-        # Body: tree + separator + rail
         body = ttk.Frame(mid)
         body.grid(row=0, column=0, sticky="nsew")
         body.columnconfigure(0, weight=1)
@@ -1023,7 +975,6 @@ class App(tk.Tk):
         body.columnconfigure(2, weight=0)
         body.rowconfigure(0, weight=1)
 
-        # Left: table (custom header with separators + spacing)
         table = ttk.Frame(body, padding=(0, 4))
         table.grid(row=0, column=0, sticky="nsew")
         table.columnconfigure(0, weight=1)
@@ -1050,11 +1001,10 @@ class App(tk.Tk):
         ttk.Label(header_frm, text="Extensions Dir", style="Card.TLabel", font=(self.base_font.cget("family"), self.base_font.cget("size"), "bold")).grid(row=0, column=4, sticky="w", padx=(12, 8), pady=6)
 
         cols = ("name", "user_data", "extensions")
-        # show="headings" would show a header row; use "" so only our custom header row is visible
         self.tree = ttk.Treeview(table, columns=cols, show="headings", height=10, takefocus=False)
         self.tree.grid(row=1, column=0, sticky="nsew")
         # Hide the native heading row (no text + zero height via style not possible, so we use show="" after setting columns)
-        self.tree["show"] = ""
+        self.tree["show"] = ""  # custom header above
         self.tree.column("name", width=100, minwidth=80, stretch=False, anchor="w")
         self.tree.column("user_data", width=280, minwidth=180, stretch=True, anchor="w")
         self.tree.column("extensions", width=280, minwidth=180, stretch=True, anchor="w")
@@ -1069,15 +1019,13 @@ class App(tk.Tk):
 
         self.tree.bind("<Double-1>", lambda _e: self.launch_selected())
 
-        # Thin divider between tree and rail (tk.Frame is lighter than ttk.Separator on resize)
         self.body_sep = tk.Frame(body, width=2, bg=self.palette["border"], highlightthickness=0)
         self.body_sep.grid(row=0, column=1, sticky="ns", padx=(4, 4))
         self.body_sep.grid_propagate(False)
 
-        # Right: fixed narrow rail
         rail = ttk.Frame(body, width=130)
         rail.grid(row=0, column=2, sticky="ns", padx=(4, 0))
-        rail.grid_propagate(False)  # IMPORTANT: enforce width
+        rail.grid_propagate(False)
 
         def rbtn(text, cmd, style="TButton", pady=(0, 4)):
             b = ttk.Button(rail, text=text, command=cmd, style=style, takefocus=False, cursor="hand2")
@@ -1100,7 +1048,6 @@ class App(tk.Tk):
         rbtn("Save Config", self.save_config)
         rbtn("Reload", self.reload_config, pady=(0, 0))
 
-        # Status line (config path left, Report Bugs? right)
         status = ttk.Frame(root, padding=(2, 4, 2, 0))
         status.grid(row=2, column=0, sticky="ew")
         status.columnconfigure(0, weight=1)
@@ -1336,12 +1283,10 @@ class App(tk.Tk):
             messagebox.showerror(APP_NAME, f"Launch failed:\n\n{e}")
 
 
-# -----------------------------
-# Global excepthook (report bugs modal)
-# -----------------------------
+# --- Global excepthook ---
 
 def _global_excepthook(exc_type: type, exc_value: BaseException, exc_tb) -> None:
-    """Log uncaught exceptions to crash.log and show report-bugs modal or fallback message."""
+    """Log to crash.log; show report-bugs modal or fallback."""
     err = traceback.format_exc()
     stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
@@ -1368,9 +1313,7 @@ def _global_excepthook(exc_type: type, exc_value: BaseException, exc_tb) -> None
         pass
 
 
-# -----------------------------
-# Crash-safe launcher
-# -----------------------------
+# --- Entry ---
 
 def run_app():
     sys.excepthook = _global_excepthook

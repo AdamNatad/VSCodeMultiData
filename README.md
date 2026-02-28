@@ -1,25 +1,15 @@
 # VSCode MultiData
 
-**Run multiple VS Code instances with separate user data and extensions.**  
+**v1.0.0** — Run multiple VS Code instances with separate user-data and extensions.  
 By [Adam Natad](https://natadtech.com/adam-natad).
 
-**v1.0.0**
-
 ![VSCode MultiData Banner](assets/VSCodeMultiDataBanner.png)
-
-*Project banner — use this image for social sharing, repo previews, and SEO.*
 
 ---
 
 ## What it does
 
-VSCode MultiData is a Windows launcher that lets you:
-
-- **Manage profiles** — Each profile has its own user-data and extensions folders.
-- **Launch VS Code** — One click per profile; config and crash log live next to the app.
-- **Switch themes** — Dark / Light and UI scale (Auto, 100%–300%); restart to apply.
-
-Use it to keep work, personal, or client setups separate without switching Windows users.
+Easily launch VS Code with **separate user-data and extension data** per profile. Use different profiles to sign in to different accounts in extensions (e.g. multiple GitHub accounts, different marketplace logins) without switching Windows users. Manage profiles and launch per profile with one click.
 
 ---
 
@@ -137,14 +127,22 @@ VSCodeMultiData/
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md).
+[CHANGELOG.md](CHANGELOG.md) — all notable changes per release.
+
+---
+
+## Support / Help
+
+- **Support:** [natadtech.com](https://natadtech.com)
+- **Help / About:** [natadtech.com/adam-natad](https://natadtech.com/adam-natad)
+- **Bugs / issues:** [GitHub Issues](https://github.com/AdamNatad/VSCodeMultiData/issues)
 
 ---
 
 ## License
 
-See [LICENSE](LICENSE) in this repository.
+[LICENSE](LICENSE) in this repo.
 
 ---
 
-**VSCode MultiData** by [Adam Natad](https://natadtech.com/adam-natad) - *VS Code multiple user-data launcher.*
+**VSCode MultiData** by [Adam Natad](https://natadtech.com/adam-natad) — VS Code multiple user-data launcher.

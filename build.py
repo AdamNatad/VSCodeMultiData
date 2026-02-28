@@ -9,6 +9,10 @@ Run from project root:  python build.py
 
 Requires: PyInstaller, Inno Setup 6 (for installer).
 Optional: assets/app_icon.png for app.ico (skip icon step if missing).
+
+Installer links (build/installer.iss):
+  Support: https://natadtech.com
+  Help:    https://natadtech.com/adam-natad
 """
 from __future__ import annotations
 

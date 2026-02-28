@@ -4,7 +4,8 @@
 
 #define MyAppName "VSCode MultiData by Adam Natad"
 #define MyAppPublisher "Adam Natad"
-#define MyAppURL "https://github.com"
+#define MyAppSupportURL "https://natadtech.com"
+#define MyAppHelpURL "https://natadtech.com/adam-natad"
 #define MyAppExeName "VSCodeMD.exe"
 
 [Setup]
@@ -13,8 +14,8 @@ AppName={#MyAppName}
 AppVersion=1.0.0
 AppVerName={#MyAppName} (v1.0.0)
 AppPublisher={#MyAppPublisher}
-AppPublisherURL={#MyAppURL}
-AppSupportURL={#MyAppURL}
+AppPublisherURL={#MyAppHelpURL}
+AppSupportURL={#MyAppSupportURL}
 DefaultDirName={autopf}\VSMultiData
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes

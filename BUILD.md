@@ -14,10 +14,10 @@ python build.py
 
 Steps run in order:
 
-1. **Icon** — `build/build_icon.py` → `app.ico` (from `assets/app_icon.png`)
-2. **EXE** — PyInstaller on `src/launcher.py` → `dist/VSCodeMD.exe`
-3. **Portable ZIP** → `output/VSCodeMultiData-Portable.zip`
-4. **Installer** — Inno Setup 6 (`build/installer.iss`) → `output/VSCodeMultiData-Setup.exe`
+1. **Icon** — Clears `output/`, then `build/build_icon.py` → `app.ico` (from `assets/app_icon.png`).
+2. **EXE** — PyInstaller on `src/launcher.py` → `dist/VSCodeMD.exe`.
+3. **Portable ZIP** → `output/VSCodeMultiData-Portable.zip`.
+4. **Installer** — Inno Setup 6 (`build/installer.iss`) → `output/VSCodeMultiData-Setup.exe`.
 
 ---
 
@@ -46,8 +46,10 @@ python build/build_icon.py path/to/logo.png
 **2. EXE**
 
 ```bash
-pyinstaller --onefile --noconsole --icon=app.ico --add-data "app.ico;." --name "VSCode MultiData by Adam Natad" src/launcher.py
+pyinstaller --onefile --noconsole --icon=app.ico --add-data "app.ico;." --name "VSCodeMD" src/launcher.py
 ```
+
+Output: `dist/VSCodeMD.exe`.
 
 **3. Portable ZIP**
 
@@ -67,14 +69,16 @@ Or open `build/installer.iss` in Inno Setup 6 and use **Build → Compile**.
 ## Installer behaviour
 
 - **Install path:** `C:\Program Files\VSMultiData\`
-- **Permissions:** Write access for Users on the install folder (so config/crash can be written beside the EXE).
-- **Shortcuts:** Start Menu + optional Desktop.
-- **Uninstall:** Add or remove programs.
+- **Permissions:** Users get write access to the install folder (config and crash log beside the EXE).
+- **Shortcuts:** Start Menu; optional Desktop icon.
+- **Support URL:** natadtech.com · **Help URL:** natadtech.com/adam-natad
+- **Uninstall:** Windows Add or remove programs.
 
 ---
 
 ## Folder layout
 
-- **Root:** `build.py` (single entry point), `src/launcher.py` (app), `assets/`, docs.
-- **build/** — Build tools only: `build_icon.py`, `installer.iss`.
-- **output/** — Generated: `VSCodeMultiData-Portable.zip`, `VSCodeMultiData-Setup.exe`.
+- **Root:** `build.py` (entry point), `src/launcher.py`, `assets/`, README/BUILD/CHANGELOG.
+- **build/** — `build_icon.py`, `installer.iss`.
+- **output/** — Cleared at start of build; holds `VSCodeMultiData-Portable.zip` and `VSCodeMultiData-Setup.exe`.
+- **dist/** — PyInstaller output (`VSCodeMD.exe`); not in git.
