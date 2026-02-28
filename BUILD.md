@@ -15,7 +15,7 @@ python build.py
 Steps run in order:
 
 1. **Icon** — `build/build_icon.py` → `app.ico` (from `assets/app_icon.png`)
-2. **EXE** — PyInstaller on `src/launcher.py` → `dist/VSCode MultiData by Adam Natad.exe`
+2. **EXE** — PyInstaller on `src/launcher.py` → `dist/VSCodeMD.exe`
 3. **Portable ZIP** → `output/VSCodeMultiData-Portable.zip`
 4. **Installer** — Inno Setup 6 (`build/installer.iss`) → `output/VSCodeMultiData-Setup.exe`
 

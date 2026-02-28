@@ -42,6 +42,11 @@ def app_dir() -> str:
 def config_path() -> str:
     return os.path.join(app_dir(), CONFIG_FILENAME)
 
+
+def app_icon_path() -> str:
+    """Path to app.ico for main window and dialogs (dev or PyInstaller)."""
+    return os.path.join(getattr(sys, "_MEIPASS", app_dir()), "app.ico")
+
 def crash_log_path() -> str:
     return os.path.join(app_dir(), "crash.log")
 
@@ -50,6 +55,24 @@ def norm(p: str) -> str:
 
 def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
+
+
+def get_windows_dpi() -> int:
+    """Return Windows logical DPI (e.g. 96, 120, 144) for UI scale Auto. Non-Windows returns 96."""
+    if platform.system() != "Windows":
+        return 96
+    try:
+        user32 = ctypes.windll.user32
+        gdi32 = ctypes.windll.gdi32
+        hdc = user32.GetDC(0)
+        if not hdc:
+            return 96
+        dpi = gdi32.GetDeviceCaps(hdc, 88)  # LOGPIXELSX
+        user32.ReleaseDC(0, hdc)
+        return int(dpi) if dpi and int(dpi) > 0 else 96
+    except Exception:
+        return 96
+
 
 def open_folder_cross_platform(path: str) -> None:
     path = norm(path)
@@ -240,6 +263,12 @@ class ProfileEditor(tk.Toplevel):
         super().__init__(master)
         self.title(title)
         self.resizable(False, False)
+        _icon = app_icon_path()
+        if os.path.isfile(_icon):
+            try:
+                self.iconbitmap(_icon)
+            except Exception:
+                pass
         self.result: Profile | None = None
         self._master_app = getattr(master, "palette", None) and master or None
 
@@ -345,6 +374,12 @@ class DeleteConfirmDialog(tk.Toplevel):
 
         self.title("Remove profile")
         self.resizable(False, False)
+        _icon = app_icon_path()
+        if os.path.isfile(_icon):
+            try:
+                self.iconbitmap(_icon)
+            except Exception:
+                pass
         self.configure(bg=master.palette["bg"])
 
         outer = ttk.Frame(self, style="Card.TFrame", padding=16)
@@ -410,6 +445,12 @@ class SaveConfirmDialog(tk.Toplevel):
 
         self.title("Save configuration")
         self.resizable(False, False)
+        _icon = app_icon_path()
+        if os.path.isfile(_icon):
+            try:
+                self.iconbitmap(_icon)
+            except Exception:
+                pass
         self.configure(bg=master.palette["bg"])
 
         outer = ttk.Frame(self, style="Card.TFrame", padding=16)
@@ -463,6 +504,72 @@ class SaveConfirmDialog(tk.Toplevel):
 
 
 # -----------------------------
+# Save and relaunch confirmation (Yes / No)
+# -----------------------------
+
+class SaveAndRelaunchConfirmDialog(tk.Toplevel):
+    """Yes/No dialog: save config and relaunch the app to apply UI scale."""
+
+    def __init__(self, master: "App"):
+        super().__init__(master)
+        self.confirmed = False
+
+        self.title("Save and Relaunch?")
+        self.resizable(False, False)
+        _icon = app_icon_path()
+        if os.path.isfile(_icon):
+            try:
+                self.iconbitmap(_icon)
+            except Exception:
+                pass
+        self.configure(bg=master.palette["bg"])
+
+        outer = ttk.Frame(self, style="Card.TFrame", padding=16)
+        outer.grid(row=0, column=0, sticky="nsew")
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        ttk.Label(
+            outer,
+            text="Save config and relaunch the app to apply the new UI scale?",
+            style="Card.TLabel",
+            wraplength=360,
+        ).grid(row=0, column=0, sticky="w", pady=(0, 16))
+
+        btn_row = ttk.Frame(outer)
+        btn_row.grid(row=1, column=0, sticky="e")
+        ttk.Button(btn_row, text="No", command=self._no, takefocus=False, cursor="hand2").pack(side="left", padx=(0, 8))
+        ttk.Button(btn_row, text="Yes", style="Accent.TButton", command=self._yes, takefocus=False, cursor="hand2").pack(side="left")
+
+        self.transient(master)
+        self.bind("<Escape>", lambda _e: self._no())
+        self.bind("<Return>", lambda _e: self._yes())
+        self.grab_set()
+        self.wait_visibility()
+        self._center_on(master)
+        self.focus_force()
+
+    def _center_on(self, master: tk.Misc) -> None:
+        self.update_idletasks()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        mx = master.winfo_x()
+        my = master.winfo_y()
+        mw = master.winfo_width()
+        mh = master.winfo_height()
+        x = mx + max(0, (mw - w) // 2)
+        y = my + max(0, (mh - h) // 2)
+        self.geometry(f"+{x}+{y}")
+
+    def _no(self) -> None:
+        self.destroy()
+
+    def _yes(self) -> None:
+        self.confirmed = True
+        self.destroy()
+
+
+# -----------------------------
 # Styled info dialog (one button)
 # -----------------------------
 
@@ -473,6 +580,12 @@ class InfoDialog(tk.Toplevel):
         super().__init__(master)
         self.title(title)
         self.resizable(False, False)
+        _icon = app_icon_path()
+        if os.path.isfile(_icon):
+            try:
+                self.iconbitmap(_icon)
+            except Exception:
+                pass
         self.configure(bg=master.palette["bg"])
 
         outer = ttk.Frame(self, style="Card.TFrame", padding=16)
@@ -535,7 +648,7 @@ class App(tk.Tk):
                     pass
         super().__init__()
         self.title(APP_NAME)
-        _icon = os.path.join(getattr(sys, "_MEIPASS", app_dir()), "app.ico")
+        _icon = app_icon_path()
         if os.path.isfile(_icon):
             try:
                 self.iconbitmap(_icon)
@@ -544,7 +657,9 @@ class App(tk.Tk):
         self.minsize(self.MIN_WIDTH, self.MIN_HEIGHT)
         self.bind("<Configure>", self._enforce_min_size)
 
-        self.cm = ConfigManager(config_path())
+        _config_path = config_path()
+        self._config_existed_at_startup = os.path.isfile(_config_path)
+        self.cm = ConfigManager(_config_path)
         self.cm.load()
         app = self.cm.get_app()
 
@@ -767,7 +882,9 @@ class App(tk.Tk):
         if forced is not None:
             self.tk.call("tk", "scaling", forced)
         else:
-            self.tk.call("tk", "scaling", 96.0 / 72.0)
+            # Auto: use Windows DPI so scale matches the system
+            dpi = get_windows_dpi()
+            self.tk.call("tk", "scaling", dpi / 72.0)
         self.update_idletasks()
         self._update_tree_rowheight()
 
@@ -973,15 +1090,14 @@ class App(tk.Tk):
         self._apply_scale()
 
     def _on_scale_change(self):
-        InfoDialog(
-            self,
-            "UI scale",
-            "The new UI scale will take effect after you save and restart.\n\n"
-            "1. Click Save Config to write your settings.\n\n"
-            "2. Close and reopen the app to apply the new scale.",
-        )
         self._apply_scale()
         self._apply_style()  # Reapply styles so fonts/row heights reflect new scaling
+        d = SaveAndRelaunchConfirmDialog(self)
+        self.wait_window(d)
+        if not d.confirmed:
+            return
+        self._write_config_to_disk()
+        self._relaunch()
 
     def add_profile(self):
         ed = ProfileEditor(self, "Add Profile", None, self.var_base_dir.get())
@@ -1038,11 +1154,8 @@ class App(tk.Tk):
     def open_base_dir(self):
         open_folder_cross_platform(self.var_base_dir.get())
 
-    def save_config(self):
-        d = SaveConfirmDialog(self)
-        self.wait_window(d)
-        if not d.confirmed:
-            return
+    def _write_config_to_disk(self) -> None:
+        """Write current UI state to config file (no dialogs)."""
         self.cm.set_app("vscode_path", norm(self.var_vscode_path.get()))
         self.cm.set_app("base_dir", norm(self.var_base_dir.get()))
         self.cm.set_app("open_new_window", "1" if self.var_open_new_window.get() else "0")
@@ -1052,6 +1165,23 @@ class App(tk.Tk):
         self.cm.set_app("ui_scale", self.var_ui_scale.get())
         self.cm.save()
         self.status.set(f"Saved config: {config_path()}")
+
+    def _relaunch(self) -> None:
+        """Start a new process and exit so the new UI scale takes effect."""
+        cwd = app_dir()
+        if getattr(sys, "frozen", False):
+            subprocess.Popen([sys.executable], cwd=cwd)
+        else:
+            subprocess.Popen([sys.executable, os.path.abspath(__file__)], cwd=cwd)
+        self.quit()
+        sys.exit(0)
+
+    def save_config(self):
+        d = SaveConfirmDialog(self)
+        self.wait_window(d)
+        if not d.confirmed:
+            return
+        self._write_config_to_disk()
         d = InfoDialog(self, "Configuration saved", "Your settings have been written to the config file.")
         self.wait_window(d)
 

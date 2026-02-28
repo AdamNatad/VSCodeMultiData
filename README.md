@@ -46,7 +46,7 @@ Config and crash log are created in the install folder on first run.
 
 1. Download **VSCodeMultiData-Portable.zip** from [Releases](https://github.com/AdamNatad/VSCodeMultiData/releases).
 2. Extract anywhere (e.g. `D:\Tools\VSCodeMultiData`).
-3. Run **VSCode MultiData by Adam Natad.exe**.
+3. Run **VSCodeMD.exe**.
 
 Config and crash log are created in the same folder as the EXE.
 
@@ -117,7 +117,7 @@ VSCodeMultiData/
 │   ├── build_icon.py
 │   └── installer.iss
 ├── dist/                    (generated)
-│   └── VSCode MultiData by Adam Natad.exe
+│   └── VSCodeMD.exe
 └── output/                  (generated)
     ├── VSCodeMultiData-Portable.zip
     └── VSCodeMultiData-Setup.exe

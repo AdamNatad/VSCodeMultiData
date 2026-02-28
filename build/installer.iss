@@ -5,12 +5,13 @@
 #define MyAppName "VSCode MultiData by Adam Natad"
 #define MyAppPublisher "Adam Natad"
 #define MyAppURL "https://github.com"
-#define MyAppExeName "VSCode MultiData by Adam Natad.exe"
+#define MyAppExeName "VSCodeMD.exe"
 
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 AppName={#MyAppName}
 AppVersion=1.0.0
+AppVerName={#MyAppName} (v1.0.0)
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}

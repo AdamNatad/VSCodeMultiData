@@ -13,12 +13,13 @@ Optional: assets/app_icon.png for app.ico (skip icon step if missing).
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-EXE_NAME = "VSCode MultiData by Adam Natad.exe"
+EXE_NAME = "VSCodeMD.exe"
 OUT_DIR = os.path.join(ROOT, "output")
 PORTABLE_ZIP = os.path.join(ROOT, "output", "VSCodeMultiData-Portable.zip")
 SETUP_EXE = os.path.join(ROOT, "output", "VSCodeMultiData-Setup.exe")
@@ -59,7 +60,7 @@ def _pyinstaller_cmd(ico: str | None) -> list[str]:
         cmd = [sys.executable, "-m", "pyinstaller"]
     if ico:
         cmd.extend(["--icon", ico, "--add-data", f"{ico};."])
-    cmd.extend(["--onefile", "--noconsole", "--name", "VSCode MultiData by Adam Natad"])
+    cmd.extend(["--onefile", "--noconsole", "--name", "VSCodeMD"])
     return cmd
 
 
@@ -112,8 +113,16 @@ def step_installer() -> bool:
     return run([ISCC, iss_abs], cwd=ROOT)
 
 
+def clear_output() -> None:
+    """Remove output folder so the build starts from a clean state."""
+    if os.path.isdir(OUT_DIR):
+        shutil.rmtree(OUT_DIR)
+        print(f"  Cleared {OUT_DIR}")
+
+
 def main() -> int:
     print("\n=== VSCode MultiData — Full build (portable ZIP + installer) ===")
+    clear_output()
     if not step_icon():
         return 1
     if not step_pyinstaller():
