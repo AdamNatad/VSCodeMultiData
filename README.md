@@ -1,4 +1,4 @@
-# VSCode MultiData by [Adam Natad](https://natadtech.com/adam-natad).
+# VSCode MultiData by [Adam Natad](https://natadtech.com/adam-natad)
 
 ![VSCode MultiData Banner](assets/VSCodeMultiDataBanner.png)
 
