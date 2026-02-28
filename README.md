@@ -10,9 +10,9 @@ Easily launch VS Code with **separate user-data and extension data** per profile
 
 **Preview**
 
-| Dark mode | Light mode |
+| Dark Mode | Light Mode |
 |-----------|------------|
-| ![Dark mode](assets/s1.jpg) | ![Light mode](assets/s2.jpg) |
+| ![Dark Mode](assets/s1.jpg) | ![Light Mode](assets/s2.jpg) |
 
 ---
 
