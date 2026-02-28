@@ -5,9 +5,8 @@
 # - Compact responsive UI (tree expands, right panel stays narrow)
 # - Removed all icons (cleaner look)
 #
-# Build (Windows EXE):
-#   pip install pyinstaller
-#   pyinstaller --onefile --noconsole --name "VSCode MultiData by Adam Natad" launcher.py
+# Build: from project root run  python build.py  (output: output/VSCodeMultiData-Portable.zip, output/VSCodeMultiData-Setup.exe)
+# App lives in src/; build script and installer script in build/.
 
 from __future__ import annotations
 
@@ -242,35 +241,39 @@ class ProfileEditor(tk.Toplevel):
         self.title(title)
         self.resizable(False, False)
         self.result: Profile | None = None
+        self._master_app = getattr(master, "palette", None) and master or None
 
         self.base_dir = norm(base_dir)
         self.var_name = tk.StringVar(value=(initial.name if initial else "codeX"))
         self.var_user_data = tk.StringVar(value=(initial.user_data if initial else ""))
         self.var_extensions = tk.StringVar(value=(initial.extensions if initial else ""))
 
-        frm = ttk.Frame(self, padding=12)
+        if self._master_app:
+            self.configure(bg=self._master_app.palette["bg"])
+        frm = ttk.Frame(self, style="Card.TFrame" if self._master_app else "TFrame", padding=12)
         frm.grid(row=0, column=0, sticky="nsew")
         frm.columnconfigure(1, weight=1)
 
-        ttk.Label(frm, text="Name").grid(row=0, column=0, sticky="w")
+        lbl_style = "Card.TLabel" if self._master_app else "TLabel"
+        ttk.Label(frm, text="Name", style=lbl_style).grid(row=0, column=0, sticky="w")
         ttk.Entry(frm, textvariable=self.var_name, width=46).grid(row=0, column=1, sticky="ew", padx=(8, 0))
 
-        ttk.Label(frm, text="User Data").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(frm, text="User Data", style=lbl_style).grid(row=1, column=0, sticky="w", pady=(8, 0))
         ttk.Entry(frm, textvariable=self.var_user_data, width=46).grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
-        ttk.Button(frm, text="Browse…", command=self.browse_ud, takefocus=False).grid(row=1, column=2, padx=(8, 0), pady=(8, 0))
+        ttk.Button(frm, text="Browse…", command=self.browse_ud, takefocus=False, cursor="hand2").grid(row=1, column=2, padx=(8, 0), pady=(8, 0))
 
-        ttk.Label(frm, text="Extensions").grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(frm, text="Extensions", style=lbl_style).grid(row=2, column=0, sticky="w", pady=(8, 0))
         ttk.Entry(frm, textvariable=self.var_extensions, width=46).grid(row=2, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
-        ttk.Button(frm, text="Browse…", command=self.browse_ex, takefocus=False).grid(row=2, column=2, padx=(8, 0), pady=(8, 0))
+        ttk.Button(frm, text="Browse…", command=self.browse_ex, takefocus=False, cursor="hand2").grid(row=2, column=2, padx=(8, 0), pady=(8, 0))
 
         ttk.Separator(frm).grid(row=3, column=0, columnspan=3, sticky="ew", pady=10)
 
-        ttk.Button(frm, text="Auto-Fill from Base", command=self.autofill, takefocus=False).grid(row=4, column=0, columnspan=3, sticky="ew")
+        ttk.Button(frm, text="Auto-Fill from Base", command=self.autofill, takefocus=False, cursor="hand2").grid(row=4, column=0, columnspan=3, sticky="ew")
 
         btns = ttk.Frame(frm)
         btns.grid(row=5, column=0, columnspan=3, sticky="e", pady=(10, 0))
-        ttk.Button(btns, text="Cancel", command=self.destroy, takefocus=False).grid(row=0, column=0, padx=(0, 8))
-        ttk.Button(btns, text="Save", command=self.save, takefocus=False).grid(row=0, column=1)
+        ttk.Button(btns, text="Cancel", command=self.destroy, takefocus=False, cursor="hand2").grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(btns, text="Save", command=self.save, takefocus=False, cursor="hand2").grid(row=0, column=1)
 
         self.bind("<Return>", lambda _e: self.save())
         self.bind("<Escape>", lambda _e: self.destroy())
@@ -279,6 +282,7 @@ class ProfileEditor(tk.Toplevel):
         self.grab_set()
         self.wait_visibility()
         self._center_on(master)
+        self.focus_force()
 
     def _center_on(self, master: tk.Tk) -> None:
         """Center this window on the master window."""
@@ -327,12 +331,189 @@ class ProfileEditor(tk.Toplevel):
 
 
 # -----------------------------
+# Styled delete confirmation dialog
+# -----------------------------
+
+class DeleteConfirmDialog(tk.Toplevel):
+    """Themed confirmation dialog so it doesn't look like a default messagebox."""
+
+    def __init__(self, master: "App", profile_name: str):
+        super().__init__(master)
+        self.master_app = master
+        self.profile_name = profile_name
+        self.confirmed = False
+
+        self.title("Remove profile")
+        self.resizable(False, False)
+        self.configure(bg=master.palette["bg"])
+
+        outer = ttk.Frame(self, style="Card.TFrame", padding=16)
+        outer.grid(row=0, column=0, sticky="nsew")
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        ttk.Label(
+            outer,
+            text=f'"{profile_name}" will be removed from the list.',
+            style="Card.TLabel",
+            font=(master.base_font.cget("family"), master.base_font.cget("size") + 1, "bold"),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 6))
+
+        ttk.Label(
+            outer,
+            text="Your data folders stay on disk. Use Save Config when you're done to write the change.",
+            style="Card.TLabel",
+        ).grid(row=1, column=0, sticky="w", pady=(0, 16))
+
+        btn_row = ttk.Frame(outer)
+        btn_row.grid(row=2, column=0, sticky="e")
+        ttk.Button(btn_row, text="Cancel", command=self._cancel, takefocus=False, cursor="hand2").pack(side="left", padx=(0, 8))
+        ttk.Button(btn_row, text="Remove", style="Danger.TButton", command=self._remove, takefocus=False, cursor="hand2").pack(side="left")
+
+        self.transient(master)
+        self.bind("<Escape>", lambda _e: self._cancel())
+        self.grab_set()
+        self.wait_visibility()
+        self._center_on(master)
+        self.focus_force()
+
+    def _center_on(self, master: tk.Misc) -> None:
+        self.update_idletasks()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        mx = master.winfo_x()
+        my = master.winfo_y()
+        mw = master.winfo_width()
+        mh = master.winfo_height()
+        x = mx + max(0, (mw - w) // 2)
+        y = my + max(0, (mh - h) // 2)
+        self.geometry(f"+{x}+{y}")
+
+    def _cancel(self) -> None:
+        self.destroy()
+
+    def _remove(self) -> None:
+        self.confirmed = True
+        self.destroy()
+
+
+# -----------------------------
+# Styled Save confirmation dialog
+# -----------------------------
+
+class SaveConfirmDialog(tk.Toplevel):
+    """Themed confirmation for saving configuration; follows app dark/light theme."""
+
+    def __init__(self, master: "App"):
+        super().__init__(master)
+        self.confirmed = False
+
+        self.title("Save configuration")
+        self.resizable(False, False)
+        self.configure(bg=master.palette["bg"])
+
+        outer = ttk.Frame(self, style="Card.TFrame", padding=16)
+        outer.grid(row=0, column=0, sticky="nsew")
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        ttk.Label(
+            outer,
+            text="Save configuration to file?",
+            style="Card.TLabel",
+            font=(master.base_font.cget("family"), master.base_font.cget("size") + 1, "bold"),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 6))
+
+        ttk.Label(
+            outer,
+            text="Your current settings will be written to the config file.",
+            style="Card.TLabel",
+        ).grid(row=1, column=0, sticky="w", pady=(0, 16))
+
+        btn_row = ttk.Frame(outer)
+        btn_row.grid(row=2, column=0, sticky="e")
+        ttk.Button(btn_row, text="Cancel", command=self._cancel, takefocus=False, cursor="hand2").pack(side="left", padx=(0, 8))
+        ttk.Button(btn_row, text="Save", style="Accent.TButton", command=self._save, takefocus=False, cursor="hand2").pack(side="left")
+
+        self.transient(master)
+        self.bind("<Escape>", lambda _e: self._cancel())
+        self.grab_set()
+        self.wait_visibility()
+        self._center_on(master)
+        self.focus_force()
+
+    def _center_on(self, master: tk.Misc) -> None:
+        self.update_idletasks()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        mx = master.winfo_x()
+        my = master.winfo_y()
+        mw = master.winfo_width()
+        mh = master.winfo_height()
+        x = mx + max(0, (mw - w) // 2)
+        y = my + max(0, (mh - h) // 2)
+        self.geometry(f"+{x}+{y}")
+
+    def _cancel(self) -> None:
+        self.destroy()
+
+    def _save(self) -> None:
+        self.confirmed = True
+        self.destroy()
+
+
+# -----------------------------
+# Styled info dialog (one button)
+# -----------------------------
+
+class InfoDialog(tk.Toplevel):
+    """Themed info message; follows app dark/light theme."""
+
+    def __init__(self, master: "App", title: str, message: str):
+        super().__init__(master)
+        self.title(title)
+        self.resizable(False, False)
+        self.configure(bg=master.palette["bg"])
+
+        outer = ttk.Frame(self, style="Card.TFrame", padding=16)
+        outer.grid(row=0, column=0, sticky="nsew")
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        ttk.Label(outer, text=message, style="Card.TLabel", wraplength=360).grid(row=0, column=0, sticky="w", pady=(0, 16))
+        ttk.Button(outer, text="OK", style="Accent.TButton", command=self.destroy, takefocus=False, cursor="hand2").grid(row=1, column=0, sticky="e")
+
+        self.transient(master)
+        self.bind("<Return>", lambda _e: self.destroy())
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.grab_set()
+        self.wait_visibility()
+        self._center_on(master)
+        self.focus_force()
+
+    def _center_on(self, master: tk.Misc) -> None:
+        self.update_idletasks()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        mx = master.winfo_x()
+        my = master.winfo_y()
+        mw = master.winfo_width()
+        mh = master.winfo_height()
+        x = mx + max(0, (mw - w) // 2)
+        y = my + max(0, (mh - h) // 2)
+        self.geometry(f"+{x}+{y}")
+
+
+# -----------------------------
 # Main App (compact + responsive)
 # -----------------------------
 
 class App(tk.Tk):
     THEME_OPTIONS = ["Dark", "Light"]
     SCALE_OPTIONS = ["Auto", "100%", "125%", "150%", "175%", "200%", "225%", "250%", "300%"]
+    # Minimum size so the right action menu is always visible; window cannot be resized smaller
+    MIN_WIDTH = 1024
+    MIN_HEIGHT = 620
 
     @staticmethod
     def _normalize_theme(raw: str) -> str:
@@ -354,7 +535,14 @@ class App(tk.Tk):
                     pass
         super().__init__()
         self.title(APP_NAME)
-        self.minsize(960, 600)
+        _icon = os.path.join(getattr(sys, "_MEIPASS", app_dir()), "app.ico")
+        if os.path.isfile(_icon):
+            try:
+                self.iconbitmap(_icon)
+            except Exception:
+                pass
+        self.minsize(self.MIN_WIDTH, self.MIN_HEIGHT)
+        self.bind("<Configure>", self._enforce_min_size)
 
         self.cm = ConfigManager(config_path())
         self.cm.load()
@@ -404,6 +592,15 @@ class App(tk.Tk):
         # fix “dotted focus” look: prevent focus by default
         self.bind_all("<Button-1>", self._defocus_on_click, add="+")
 
+    def _enforce_min_size(self, event=None):
+        """Keep window from being resized smaller than MIN so the right menu stays visible."""
+        if event and event.widget != self:
+            return
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w < self.MIN_WIDTH or h < self.MIN_HEIGHT:
+            self.geometry(f"{max(w, self.MIN_WIDTH)}x{max(h, self.MIN_HEIGHT)}")
+
     def _defocus_on_click(self, e):
         # keep focus from sticking on buttons (less ugly on ttk/clam); skip when clicking a button to avoid extra work
         try:
@@ -431,6 +628,7 @@ class App(tk.Tk):
             "warning": "#F14C4C",
             "field": "#1F1F1F",
             "select": "#094771",
+            "button_border": "#6C6C6C",
         }
 
     def _palette_light(self) -> dict:
@@ -449,6 +647,7 @@ class App(tk.Tk):
             "warning": "#C62828",
             "field": "#FFFFFF",
             "select": "#CFE8FF",
+            "button_border": "#5A5A5A",
         }
 
     def _apply_style(self) -> None:
@@ -466,21 +665,78 @@ class App(tk.Tk):
         self.style.configure("Card.TFrame", background=p["panel"], relief="flat", borderwidth=1)
 
         self.style.configure("TEntry", fieldbackground=p["field"], foreground=p["text"])
-        self.style.configure("TCombobox", fieldbackground=p["field"], foreground=p["text"])
-        self.style.map("TCombobox", fieldbackground=[("readonly", p["field"])])
+        # Dropdown (Combobox): theme-matched border and padding so it doesn't look broken
+        self.style.configure(
+            "TCombobox",
+            fieldbackground=p["field"],
+            foreground=p["text"],
+            background=p["panel2"],
+            bordercolor=p["button_border"],
+            borderwidth=1,
+            padding=(6, 4),
+            arrowcolor=p["text"],
+        )
+        # Keep text and field colors correct when dropdown is pressed/focused (fixes light theme text turning white)
+        self.style.map(
+            "TCombobox",
+            fieldbackground=[
+                ("readonly", p["field"]),
+                ("focus", p["field"]),
+                ("pressed", p["field"]),
+            ],
+            foreground=[
+                ("readonly", p["text"]),
+                ("focus", p["text"]),
+                ("pressed", p["text"]),
+            ],
+            background=[
+                ("readonly", p["panel2"]),
+                ("focus", p["panel2"]),
+                ("pressed", p["panel2"]),
+            ],
+            arrowcolor=[
+                ("readonly", p["text"]),
+                ("focus", p["text"]),
+                ("pressed", p["text"]),
+            ],
+        )
 
-        # Compact buttons with clearer hover (active) feedback
-        self.style.configure("TButton", background=p["panel2"], foreground=p["text"], padding=(6, 4), relief="flat")
+        # Buttons: theme-matched border (dark theme = light border, light theme = dark border)
+        self.style.configure(
+            "TButton",
+            background=p["panel2"],
+            foreground=p["text"],
+            padding=(6, 4),
+            relief="solid",
+            borderwidth=1,
+            bordercolor=p["button_border"],
+        )
         self.style.map("TButton", background=[("active", p["button_hover"]), ("pressed", p["border"])])
         try:
             self.style.configure("TButton", focusthickness=0, focuspadding=0)
         except Exception:
             pass
 
-        self.style.configure("Accent.TButton", background=p["accent"], foreground="#FFFFFF", padding=(6, 5), relief="flat")
+        self.style.configure(
+            "Accent.TButton",
+            background=p["accent"],
+            foreground="#FFFFFF",
+            padding=(6, 5),
+            relief="solid",
+            borderwidth=1,
+            bordercolor=p["button_border"],
+        )
         self.style.map("Accent.TButton", background=[("active", p["accent_hover"]), ("pressed", p["accent"])])
 
-        self.style.configure("Danger.TButton", background=p["panel2"], foreground=p["danger"], padding=(6, 4), relief="flat")
+        self.style.configure(
+            "Danger.TButton",
+            background=p["panel2"],
+            foreground=p["danger"],
+            padding=(6, 4),
+            relief="solid",
+            borderwidth=1,
+            bordercolor=p["button_border"],
+        )
         self.style.map("Danger.TButton", background=[("active", p["button_hover"]), ("pressed", p["border"])])
 
         self.style.configure("Treeview", background=p["field"], fieldbackground=p["field"], foreground=p["text"], relief="flat", borderwidth=0)
@@ -535,13 +791,13 @@ class App(tk.Tk):
         ttk.Label(top, text="VS Code Path", style="Card.TLabel").grid(row=0, column=0, sticky="w")
         self.entry_vscode_path = ttk.Entry(top, textvariable=self.var_vscode_path)
         self.entry_vscode_path.grid(row=0, column=1, sticky="ew", padx=(6, 6))
-        ttk.Button(top, text="Browse", command=self._browse_vscode, takefocus=False).grid(row=0, column=2, padx=(0, 4))
-        ttk.Button(top, text="Detect", command=self._detect_vscode, takefocus=False).grid(row=0, column=3)
+        ttk.Button(top, text="Browse", command=self._browse_vscode, takefocus=False, cursor="hand2").grid(row=0, column=2, padx=(0, 4))
+        ttk.Button(top, text="Detect", command=self._detect_vscode, takefocus=False, cursor="hand2").grid(row=0, column=3)
 
         ttk.Label(top, text="Base Dir", style="Card.TLabel").grid(row=1, column=0, sticky="w", pady=(6, 0))
         self.entry_base_dir = ttk.Entry(top, textvariable=self.var_base_dir)
         self.entry_base_dir.grid(row=1, column=1, sticky="ew", padx=(6, 6), pady=(6, 0))
-        ttk.Button(top, text="Browse", command=self._browse_base, takefocus=False).grid(row=1, column=2, padx=(0, 4), pady=(6, 0))
+        ttk.Button(top, text="Browse", command=self._browse_base, takefocus=False, cursor="hand2").grid(row=1, column=2, padx=(0, 4), pady=(6, 0))
 
         # Read-only: change only via Browse/Detect
         self.entry_vscode_path.config(state="disabled")
@@ -551,12 +807,12 @@ class App(tk.Tk):
         right = ttk.Frame(top, style="Card.TFrame")
         right.grid(row=0, column=4, rowspan=2, sticky="e", padx=(10, 0))
         ttk.Label(right, text="Theme", style="Card.TLabel").grid(row=0, column=0, sticky="e", padx=(0, 4))
-        theme = ttk.Combobox(right, textvariable=self.var_theme, values=self.THEME_OPTIONS, state="readonly", width=6)
+        theme = ttk.Combobox(right, textvariable=self.var_theme, values=self.THEME_OPTIONS, state="readonly", width=8)
         theme.grid(row=0, column=1, sticky="e")
         theme.bind("<<ComboboxSelected>>", lambda _e: self._on_theme_change())
 
         ttk.Label(right, text="UI Scale", style="Card.TLabel").grid(row=1, column=0, sticky="e", padx=(0, 4), pady=(6, 0))
-        scale = ttk.Combobox(right, textvariable=self.var_ui_scale, values=self.SCALE_OPTIONS, state="readonly", width=6)
+        scale = ttk.Combobox(right, textvariable=self.var_ui_scale, values=self.SCALE_OPTIONS, state="readonly", width=8)
         scale.grid(row=1, column=1, sticky="e", pady=(6, 0))
         scale.bind("<<ComboboxSelected>>", lambda _e: self._on_scale_change())
 
@@ -631,7 +887,7 @@ class App(tk.Tk):
         rail.grid_propagate(False)  # IMPORTANT: enforce width
 
         def rbtn(text, cmd, style="TButton", pady=(0, 4)):
-            b = ttk.Button(rail, text=text, command=cmd, style=style, takefocus=False)
+            b = ttk.Button(rail, text=text, command=cmd, style=style, takefocus=False, cursor="hand2")
             b.pack(fill="x", pady=pady)
             return b
 
@@ -717,6 +973,13 @@ class App(tk.Tk):
         self._apply_scale()
 
     def _on_scale_change(self):
+        InfoDialog(
+            self,
+            "UI scale",
+            "The new UI scale will take effect after you save and restart.\n\n"
+            "1. Click Save Config to write your settings.\n\n"
+            "2. Close and reopen the app to apply the new scale.",
+        )
         self._apply_scale()
         self._apply_style()  # Reapply styles so fonts/row heights reflect new scaling
 
@@ -751,7 +1014,9 @@ class App(tk.Tk):
         if not p:
             messagebox.showinfo(APP_NAME, "Select a profile first.")
             return
-        if not messagebox.askyesno(APP_NAME, f"Delete profile '{p.name}'?\n\n(Folders will NOT be deleted. Click Save Config to write changes to file.)"):
+        d = DeleteConfirmDialog(self, p.name)
+        self.wait_window(d)
+        if not d.confirmed:
             return
         self.cm.delete_profile(p.name)
         self._refresh_list()
@@ -774,7 +1039,9 @@ class App(tk.Tk):
         open_folder_cross_platform(self.var_base_dir.get())
 
     def save_config(self):
-        if not messagebox.askyesno(APP_NAME, "Save configuration to file?"):
+        d = SaveConfirmDialog(self)
+        self.wait_window(d)
+        if not d.confirmed:
             return
         self.cm.set_app("vscode_path", norm(self.var_vscode_path.get()))
         self.cm.set_app("base_dir", norm(self.var_base_dir.get()))
@@ -785,7 +1052,8 @@ class App(tk.Tk):
         self.cm.set_app("ui_scale", self.var_ui_scale.get())
         self.cm.save()
         self.status.set(f"Saved config: {config_path()}")
-        messagebox.showinfo(APP_NAME, "Configuration saved.")
+        d = InfoDialog(self, "Configuration saved", "Your settings have been written to the config file.")
+        self.wait_window(d)
 
     def reload_config(self):
         self.cm.load()

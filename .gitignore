@@ -9,8 +9,10 @@ __pycache__/
 *.egg-info/
 .eggs/
 dist/
-build/
 *.spec
+
+# PyInstaller (build/ keeps our scripts; ignore its output subdir only)
+build/VSCode*/
 
 # Config (optional: uncomment if you don't want to commit user config)
 # config.ini
