@@ -1,0 +1,787 @@
+# VSCode MultiData by Adam Natad (Compact + Responsive + Stable)
+# ------------------------------------------------------------------------------
+# Fixes:
+# - ConfigParser % crash (ui_scale=200%) by disabling interpolation
+# - Compact responsive UI (tree expands, right panel stays narrow)
+# - Removed all icons (cleaner look)
+#
+# Build (Windows EXE):
+#   pip install pyinstaller
+#   pyinstaller --onefile --noconsole --name "VSCode MultiData by Adam Natad" launcher.py
+
+from __future__ import annotations
+
+import os
+import sys
+import shutil
+import platform
+import subprocess
+import configparser
+import traceback
+import datetime
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+import tkinter.font as tkfont
+
+APP_NAME = "VSCode MultiData by Adam Natad"
+CONFIG_FILENAME = "config.ini"
+
+
+# -----------------------------
+# Helpers
+# -----------------------------
+
+def os_name() -> str:
+    return platform.system()
+
+def app_dir() -> str:
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+def config_path() -> str:
+    return os.path.join(app_dir(), CONFIG_FILENAME)
+
+def crash_log_path() -> str:
+    return os.path.join(app_dir(), "crash.log")
+
+def norm(p: str) -> str:
+    return os.path.normpath(os.path.expandvars(os.path.expanduser((p or "").strip())))
+
+def ensure_dir(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
+
+def open_folder_cross_platform(path: str) -> None:
+    path = norm(path)
+    ensure_dir(path)
+    if os_name() == "Windows":
+        os.startfile(path)  # type: ignore[attr-defined]
+    elif os_name() == "Darwin":
+        subprocess.Popen(["open", path])
+    else:
+        subprocess.Popen(["xdg-open", path])
+
+def split_args(extra: str) -> list[str]:
+    extra = (extra or "").strip()
+    if not extra:
+        return []
+    try:
+        import shlex
+        return shlex.split(extra, posix=(os_name() != "Windows"))
+    except Exception:
+        return extra.split()
+
+
+# -----------------------------
+# VS Code detection
+# -----------------------------
+
+def vscode_candidates() -> list[str]:
+    cands: list[str] = []
+
+    if os_name() == "Windows":
+        # Prefer Code.exe first
+        cands += [
+            r"C:\Program Files\Microsoft VS Code\Code.exe",
+            r"C:\Program Files (x86)\Microsoft VS Code\Code.exe",
+        ]
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            cands += [
+                os.path.join(local, r"Programs\Microsoft VS Code\Code.exe"),
+                os.path.join(local, r"Programs\Microsoft VS Code Insiders\Code - Insiders.exe"),
+            ]
+
+        # CLI fallbacks last
+        which_code = shutil.which("code.cmd") or shutil.which("code.exe") or shutil.which("code")
+        if which_code:
+            cands.append(which_code)
+
+    elif os_name() == "Darwin":
+        cands += [
+            "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+            "/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code",
+            os.path.expanduser("~/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"),
+        ]
+        which_code = shutil.which("code")
+        if which_code:
+            cands.insert(0, which_code)
+
+    else:
+        cands += ["/usr/bin/code", "/usr/local/bin/code", "/snap/bin/code"]
+        which_code = shutil.which("code")
+        if which_code:
+            cands.insert(0, which_code)
+
+    out, seen = [], set()
+    for p in cands:
+        if not p:
+            continue
+        p = norm(p)
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
+
+def autodetect_vscode_path() -> str:
+    for p in vscode_candidates():
+        if os.path.isfile(p) or shutil.which(p):
+            return p
+    return ""
+
+def is_executable_path(p: str) -> bool:
+    p = norm(p)
+    return bool(p) and (os.path.isfile(p) or shutil.which(p))
+
+
+# -----------------------------
+# Config + Model
+# -----------------------------
+
+class Profile:
+    def __init__(self, name: str, user_data: str, extensions: str):
+        self.name = name
+        self.user_data = user_data
+        self.extensions = extensions
+
+    def ensure_folders(self) -> None:
+        ensure_dir(self.user_data)
+        ensure_dir(self.extensions)
+
+class ConfigManager:
+    def __init__(self, path: str):
+        self.path = path
+        # IMPORTANT: disable interpolation so "200%" doesn't crash
+        self.cfg = configparser.ConfigParser(interpolation=None)
+
+    def _default_base_dir(self) -> str:
+        if os_name() == "Windows":
+            return r"D:\VSCode-UData"
+        return os.path.expanduser("~/VSCode-UData")
+
+    def load(self) -> None:
+        if os.path.isfile(self.path):
+            self.cfg.read(self.path, encoding="utf-8")
+        else:
+            self._create_default()
+
+        if "app" not in self.cfg: self.cfg["app"] = {}
+        if "profiles" not in self.cfg: self.cfg["profiles"] = {}
+
+        self.cfg["app"].setdefault("vscode_path", autodetect_vscode_path())
+        self.cfg["app"].setdefault("base_dir", self._default_base_dir())
+        self.cfg["app"].setdefault("open_new_window", "1")
+        self.cfg["app"].setdefault("reuse_existing_window", "0")
+        self.cfg["app"].setdefault("extra_args", "")
+        self.cfg["app"].setdefault("theme", "dark")
+        self.cfg["app"].setdefault("ui_scale", "200%")
+
+        if len(self.cfg["profiles"]) == 0:
+            base_dir = norm(self.cfg["app"]["base_dir"])
+            for i in range(1, 5):
+                name = f"code{i}"
+                ud = os.path.join(base_dir, f"Code{i}", "user-data")
+                ex = os.path.join(base_dir, f"Code{i}", "extensions")
+                self.cfg["profiles"][name] = f"{ud}|{ex}"
+            self.save()
+        else:
+            if "ui_scale" not in self.cfg["app"]:
+                self.cfg["app"]["ui_scale"] = "200%"
+                self.save()
+
+    def _create_default(self) -> None:
+        self.cfg["app"] = {
+            "vscode_path": autodetect_vscode_path(),
+            "base_dir": self._default_base_dir(),
+            "open_new_window": "1",
+            "reuse_existing_window": "0",
+            "extra_args": "",
+            "theme": "dark",
+            "ui_scale": "200%",
+        }
+        self.cfg["profiles"] = {}
+        ensure_dir(app_dir())
+        self.save()
+
+    def save(self) -> None:
+        with open(self.path, "w", encoding="utf-8") as f:
+            self.cfg.write(f)
+
+    def get_app(self) -> dict:
+        return dict(self.cfg["app"])
+
+    def set_app(self, key: str, value: str) -> None:
+        self.cfg["app"][key] = value
+
+    def get_profiles(self) -> list[Profile]:
+        out: list[Profile] = []
+        for name, value in self.cfg["profiles"].items():
+            parts = value.split("|", 1)
+            ud = norm(parts[0]) if parts else ""
+            ex = norm(parts[1]) if len(parts) > 1 else ""
+            out.append(Profile(name, ud, ex))
+        out.sort(key=lambda p: p.name.lower())
+        return out
+
+    def upsert_profile(self, p: Profile) -> None:
+        self.cfg["profiles"][p.name] = f"{p.user_data}|{p.extensions}"
+
+    def delete_profile(self, name: str) -> None:
+        if name in self.cfg["profiles"]:
+            del self.cfg["profiles"][name]
+
+
+# -----------------------------
+# Profile editor dialog (compact)
+# -----------------------------
+
+class ProfileEditor(tk.Toplevel):
+    def __init__(self, master: tk.Tk, title: str, initial: Profile | None, base_dir: str):
+        super().__init__(master)
+        self.title(title)
+        self.resizable(False, False)
+        self.result: Profile | None = None
+
+        self.base_dir = norm(base_dir)
+        self.var_name = tk.StringVar(value=(initial.name if initial else "codeX"))
+        self.var_user_data = tk.StringVar(value=(initial.user_data if initial else ""))
+        self.var_extensions = tk.StringVar(value=(initial.extensions if initial else ""))
+
+        frm = ttk.Frame(self, padding=12)
+        frm.grid(row=0, column=0, sticky="nsew")
+        frm.columnconfigure(1, weight=1)
+
+        ttk.Label(frm, text="Name").grid(row=0, column=0, sticky="w")
+        ttk.Entry(frm, textvariable=self.var_name, width=46).grid(row=0, column=1, sticky="ew", padx=(8, 0))
+
+        ttk.Label(frm, text="User Data").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(frm, textvariable=self.var_user_data, width=46).grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
+        ttk.Button(frm, text="Browse…", command=self.browse_ud, takefocus=False).grid(row=1, column=2, padx=(8, 0), pady=(8, 0))
+
+        ttk.Label(frm, text="Extensions").grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(frm, textvariable=self.var_extensions, width=46).grid(row=2, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
+        ttk.Button(frm, text="Browse…", command=self.browse_ex, takefocus=False).grid(row=2, column=2, padx=(8, 0), pady=(8, 0))
+
+        ttk.Separator(frm).grid(row=3, column=0, columnspan=3, sticky="ew", pady=10)
+
+        ttk.Button(frm, text="Auto-Fill from Base", command=self.autofill, takefocus=False).grid(row=4, column=0, columnspan=3, sticky="ew")
+
+        btns = ttk.Frame(frm)
+        btns.grid(row=5, column=0, columnspan=3, sticky="e", pady=(10, 0))
+        ttk.Button(btns, text="Cancel", command=self.destroy, takefocus=False).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(btns, text="Save", command=self.save, takefocus=False).grid(row=0, column=1)
+
+        self.bind("<Return>", lambda _e: self.save())
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+        self.transient(master)
+        self.grab_set()
+        self.wait_visibility()
+
+    def autofill(self) -> None:
+        name = self.var_name.get().strip()
+        if not name:
+            messagebox.showwarning(APP_NAME, "Enter a name first.")
+            return
+        folder = name[0].upper() + name[1:] if len(name) > 1 else name.upper()
+        self.var_user_data.set(norm(os.path.join(self.base_dir, folder, "user-data")))
+        self.var_extensions.set(norm(os.path.join(self.base_dir, folder, "extensions")))
+
+    def browse_ud(self) -> None:
+        d = filedialog.askdirectory(title="Select User Data Folder")
+        if d:
+            self.var_user_data.set(norm(d))
+
+    def browse_ex(self) -> None:
+        d = filedialog.askdirectory(title="Select Extensions Folder")
+        if d:
+            self.var_extensions.set(norm(d))
+
+    def save(self) -> None:
+        name = self.var_name.get().strip()
+        ud = norm(self.var_user_data.get())
+        ex = norm(self.var_extensions.get())
+        if not name:
+            messagebox.showerror(APP_NAME, "Name cannot be empty.")
+            return
+        if not ud or not ex:
+            messagebox.showerror(APP_NAME, "User Data and Extensions are required.")
+            return
+        self.result = Profile(name, ud, ex)
+        self.destroy()
+
+
+# -----------------------------
+# Main App (compact + responsive)
+# -----------------------------
+
+class App(tk.Tk):
+    SCALE_OPTIONS = ["Auto", "100%", "125%", "150%", "175%", "200%", "225%", "250%", "300%"]
+
+    def __init__(self):
+        super().__init__()
+        self.title(APP_NAME)
+        self.minsize(900, 560)
+
+        self.cm = ConfigManager(config_path())
+        self.cm.load()
+        app = self.cm.get_app()
+
+        self.var_vscode_path = tk.StringVar(value=norm(app.get("vscode_path", "")))
+        self.var_base_dir = tk.StringVar(value=norm(app.get("base_dir", "")))
+        self.var_open_new_window = tk.IntVar(value=int(app.get("open_new_window", "1")))
+        self.var_reuse_existing_window = tk.IntVar(value=int(app.get("reuse_existing_window", "0")))
+        self.var_extra_args = tk.StringVar(value=app.get("extra_args", ""))
+        self.var_theme = tk.StringVar(value=(app.get("theme", "dark") or "dark"))
+        self.var_ui_scale = tk.StringVar(value=(app.get("ui_scale", "200%") or "200%"))
+
+        self.status = tk.StringVar(value=f"Config: {config_path()}")
+
+        # Fonts
+        self.base_font = tkfont.nametofont("TkDefaultFont")
+        if os_name() == "Windows":
+            try:
+                self.base_font.configure(family="Segoe UI")
+            except Exception:
+                pass
+
+        # Style
+        self.style = ttk.Style(self)
+        try:
+            self.style.theme_use("clam")
+        except Exception:
+            pass
+
+        self.palette = self._palette_dark() if self.var_theme.get() == "dark" else self._palette_light()
+        self._apply_style()
+        self._build_ui()
+        self._refresh_list()
+        self._apply_scale()
+
+        # fix “dotted focus” look: prevent focus by default
+        self.bind_all("<Button-1>", self._defocus_on_click, add="+")
+
+    def _defocus_on_click(self, _e):
+        # keep focus from sticking on buttons (less ugly on ttk/clam)
+        try:
+            w = self.focus_get()
+            if isinstance(w, ttk.Button):
+                self.focus_set()
+        except Exception:
+            pass
+
+    def _palette_dark(self) -> dict:
+        return {
+            "bg": "#1E1E1E",
+            "panel": "#252526",
+            "panel2": "#2D2D2D",
+            "border": "#3C3C3C",
+            "text": "#D4D4D4",
+            "muted": "#9DA2A6",
+            "accent": "#007ACC",
+            "danger": "#F14C4C",
+            "field": "#1F1F1F",
+            "select": "#094771",
+        }
+
+    def _palette_light(self) -> dict:
+        return {
+            "bg": "#F3F3F3",
+            "panel": "#FFFFFF",
+            "panel2": "#F6F6F6",
+            "border": "#D0D0D0",
+            "text": "#1E1E1E",
+            "muted": "#5A5A5A",
+            "accent": "#007ACC",
+            "danger": "#C62828",
+            "field": "#FFFFFF",
+            "select": "#CFE8FF",
+        }
+
+    def _apply_style(self) -> None:
+        p = self.palette
+        self.configure(bg=p["bg"])
+
+        self.style.configure(".", background=p["bg"], foreground=p["text"])
+        self.style.configure("TFrame", background=p["bg"])
+        self.style.configure("TLabel", background=p["bg"], foreground=p["text"])
+        self.style.configure("Muted.TLabel", background=p["bg"], foreground=p["muted"])
+
+        self.style.configure("Card.TFrame", background=p["panel"], relief="flat", borderwidth=1)
+
+        self.style.configure("TEntry", fieldbackground=p["field"], foreground=p["text"])
+        self.style.configure("TCombobox", fieldbackground=p["field"], foreground=p["text"])
+        self.style.map("TCombobox", fieldbackground=[("readonly", p["field"])])
+
+        # Compact buttons
+        self.style.configure("TButton", background=p["panel2"], foreground=p["text"], padding=(10, 6), relief="flat")
+        self.style.map("TButton", background=[("active", p["border"])])
+        try:
+            self.style.configure("TButton", focusthickness=0, focuspadding=0)
+        except Exception:
+            pass
+
+        self.style.configure("Accent.TButton", background=p["accent"], foreground="#FFFFFF", padding=(10, 8), relief="flat")
+        self.style.map("Accent.TButton", background=[("active", p["accent"])])
+
+        self.style.configure("Danger.TButton", background=p["panel2"], foreground=p["danger"], padding=(10, 6), relief="flat")
+        self.style.map("Danger.TButton", background=[("active", p["border"])])
+
+        self.style.configure("Treeview", background=p["field"], fieldbackground=p["field"], foreground=p["text"], relief="flat", borderwidth=0)
+        self.style.map("Treeview", background=[("selected", p["select"])], foreground=[("selected", "#FFFFFF" if self.var_theme.get() == "dark" else p["text"])])
+        self.style.configure("Treeview.Heading", background=p["panel2"], foreground=p["text"], padding=(8, 5), relief="flat")
+
+    def _parse_ui_scale(self) -> float | None:
+        v = (self.var_ui_scale.get() or "").strip()
+        if v.lower() == "auto":
+            return None
+        if v.endswith("%"):
+            try:
+                pct = float(v[:-1])
+                factor = pct / 100.0
+                return (96.0 * factor) / 72.0
+            except Exception:
+                return None
+        return None
+
+    def _apply_scale(self) -> None:
+        forced = self._parse_ui_scale()
+        if forced is not None:
+            self.tk.call("tk", "scaling", forced)
+        else:
+            self.tk.call("tk", "scaling", 96.0 / 72.0)
+        self.update_idletasks()
+        self._update_tree_rowheight()
+
+    def _update_tree_rowheight(self) -> None:
+        linespace = self.base_font.metrics("linespace")
+        self.style.configure("Treeview", rowheight=max(int(linespace + 10), 26))
+
+    def _build_ui(self) -> None:
+        root = ttk.Frame(self, padding=10)
+        root.grid(row=0, column=0, sticky="nsew")
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(1, weight=1)
+
+        # ---- Top panel (compact)
+        top = ttk.Frame(root, style="Card.TFrame", padding=10)
+        top.grid(row=0, column=0, sticky="ew")
+        top.columnconfigure(1, weight=1)
+
+        ttk.Label(top, text="VS Code Path").grid(row=0, column=0, sticky="w")
+        ttk.Entry(top, textvariable=self.var_vscode_path).grid(row=0, column=1, sticky="ew", padx=(8, 8))
+        ttk.Button(top, text="Browse", command=self._browse_vscode, takefocus=False).grid(row=0, column=2, padx=(0, 6))
+        ttk.Button(top, text="Detect", command=self._detect_vscode, takefocus=False).grid(row=0, column=3)
+
+        ttk.Label(top, text="Base Dir").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(top, textvariable=self.var_base_dir).grid(row=1, column=1, sticky="ew", padx=(8, 8), pady=(8, 0))
+        ttk.Button(top, text="Browse", command=self._browse_base, takefocus=False).grid(row=1, column=2, padx=(0, 6), pady=(8, 0))
+
+        # Theme + UI Scale aligned right (compact)
+        right = ttk.Frame(top)
+        right.grid(row=0, column=4, rowspan=2, sticky="e", padx=(14, 0))
+        ttk.Label(right, text="Theme").grid(row=0, column=0, sticky="e", padx=(0, 6))
+        theme = ttk.Combobox(right, textvariable=self.var_theme, values=["dark", "light"], state="readonly", width=8)
+        theme.grid(row=0, column=1, sticky="e")
+        theme.bind("<<ComboboxSelected>>", lambda _e: self._on_theme_change())
+
+        ttk.Label(right, text="UI Scale").grid(row=1, column=0, sticky="e", padx=(0, 6), pady=(8, 0))
+        scale = ttk.Combobox(right, textvariable=self.var_ui_scale, values=self.SCALE_OPTIONS, state="readonly", width=8)
+        scale.grid(row=1, column=1, sticky="e", pady=(8, 0))
+        scale.bind("<<ComboboxSelected>>", lambda _e: self._on_scale_change())
+
+        # ---- Middle panel
+        mid = ttk.Frame(root, style="Card.TFrame", padding=10)
+        mid.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
+        mid.columnconfigure(0, weight=1)
+        mid.rowconfigure(1, weight=1)
+
+        hdr = ttk.Frame(mid)
+        hdr.grid(row=0, column=0, sticky="ew")
+        hdr.columnconfigure(1, weight=1)
+        ttk.Label(hdr, text="Profiles", font=(self.base_font.cget("family"), 11, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(hdr, text="Launcher labels only (not VS Code Profiles).", style="Muted.TLabel").grid(row=0, column=1, sticky="w", padx=(10, 0))
+
+        # Responsive body: left expands; right fixed width
+        body = ttk.Frame(mid)
+        body.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        body.columnconfigure(0, weight=1)
+        body.columnconfigure(1, weight=0)   # IMPORTANT: don't stretch the right rail
+        body.rowconfigure(0, weight=1)
+
+        # Left: table
+        table = ttk.Frame(body)
+        table.grid(row=0, column=0, sticky="nsew")
+        table.columnconfigure(0, weight=1)
+        table.rowconfigure(0, weight=1)
+
+        cols = ("name", "user_data", "extensions")
+        self.tree = ttk.Treeview(table, columns=cols, show="headings")
+        self.tree.grid(row=0, column=0, sticky="nsew")
+
+        self.tree.heading("name", text="Profile")
+        self.tree.heading("user_data", text="User Data Dir")
+        self.tree.heading("extensions", text="Extensions Dir")
+        self.tree.column("name", width=110, stretch=False, anchor="w")
+        self.tree.column("user_data", width=420, stretch=True, anchor="w")
+        self.tree.column("extensions", width=420, stretch=True, anchor="w")
+
+        vsb = ttk.Scrollbar(table, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vsb.set)
+        vsb.grid(row=0, column=1, sticky="ns", padx=(6, 0))
+
+        # (Optional) keep horizontal scrollbar, but compact
+        hsb = ttk.Scrollbar(table, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(xscrollcommand=hsb.set)
+        hsb.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+
+        self.tree.bind("<Double-1>", lambda _e: self.launch_selected())
+
+        # Right: fixed narrow rail
+        rail = ttk.Frame(body, width=180)
+        rail.grid(row=0, column=1, sticky="ns", padx=(10, 0))
+        rail.grid_propagate(False)  # IMPORTANT: enforce width
+
+        def rbtn(text, cmd, style="TButton", pady=(0, 6)):
+            b = ttk.Button(rail, text=text, command=cmd, style=style, takefocus=False)
+            b.pack(fill="x", pady=pady)
+            return b
+
+        rbtn("Launch", self.launch_selected, style="Accent.TButton", pady=(0, 8))
+        rbtn("Add", self.add_profile)
+        rbtn("Edit", self.edit_profile)
+        rbtn("Delete", self.delete_profile, style="Danger.TButton", pady=(0, 8))
+
+        ttk.Separator(rail).pack(fill="x", pady=(6, 10))
+
+        rbtn("Open User Data", self.open_user_data)
+        rbtn("Open Extensions", self.open_extensions)
+        rbtn("Open Base Dir", self.open_base_dir, pady=(0, 8))
+
+        ttk.Separator(rail).pack(fill="x", pady=(6, 10))
+
+        rbtn("Save Config", self.save_config)
+        rbtn("Reload", self.reload_config, pady=(0, 0))
+
+        # Status line
+        status = ttk.Frame(root, padding=(2, 8, 2, 0))
+        status.grid(row=2, column=0, sticky="ew")
+        status.columnconfigure(0, weight=1)
+        ttk.Label(status, textvariable=self.status, style="Muted.TLabel").grid(row=0, column=0, sticky="w")
+
+    def _refresh_list(self):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        self.profiles = self.cm.get_profiles()
+        for p in self.profiles:
+            self.tree.insert("", "end", values=(p.name, p.user_data, p.extensions))
+        kids = self.tree.get_children()
+        if kids:
+            self.tree.selection_set(kids[0])
+            self.tree.focus(kids[0])
+
+    def selected_profile(self) -> Profile | None:
+        sel = self.tree.selection()
+        if not sel:
+            return None
+        vals = self.tree.item(sel[0], "values")
+        if not vals:
+            return None
+        name = vals[0]
+        for p in self.profiles:
+            if p.name == name:
+                return p
+        return None
+
+    def _browse_vscode(self):
+        if os_name() == "Windows":
+            fp = filedialog.askopenfilename(
+                title="Select VS Code executable (Code.exe)",
+                filetypes=[("VS Code", "Code.exe"), ("Executable", "*.exe"), ("All files", "*.*")]
+            )
+        else:
+            fp = filedialog.askopenfilename(title="Select VS Code launcher/binary (code)")
+        if fp:
+            self.var_vscode_path.set(norm(fp))
+            self.save_config()
+
+    def _detect_vscode(self):
+        p = autodetect_vscode_path()
+        if p:
+            self.var_vscode_path.set(norm(p))
+            self.status.set(f"Detected VS Code: {p}")
+            self.save_config()
+        else:
+            messagebox.showwarning(APP_NAME, "Could not auto-detect VS Code.")
+
+    def _browse_base(self):
+        d = filedialog.askdirectory(title="Select Base Directory")
+        if d:
+            self.var_base_dir.set(norm(d))
+            self.save_config()
+
+    def _on_theme_change(self):
+        self.palette = self._palette_dark() if self.var_theme.get() == "dark" else self._palette_light()
+        self._apply_style()
+        self._apply_scale()
+        self.save_config()
+
+    def _on_scale_change(self):
+        self._apply_scale()
+        self.save_config()
+
+    def add_profile(self):
+        ed = ProfileEditor(self, "Add Profile", None, self.var_base_dir.get())
+        if ed.result:
+            existing = {p.name.lower() for p in self.cm.get_profiles()}
+            if ed.result.name.lower() in existing:
+                messagebox.showerror(APP_NAME, "Profile name already exists.")
+                return
+            self.cm.upsert_profile(ed.result)
+            self.cm.save()
+            self._refresh_list()
+
+    def edit_profile(self):
+        p = self.selected_profile()
+        if not p:
+            messagebox.showinfo(APP_NAME, "Select a profile first.")
+            return
+        ed = ProfileEditor(self, "Edit Profile", p, self.var_base_dir.get())
+        if ed.result:
+            existing = {x.name.lower() for x in self.cm.get_profiles() if x.name.lower() != p.name.lower()}
+            if ed.result.name.lower() in existing:
+                messagebox.showerror(APP_NAME, "Another profile with that name already exists.")
+                return
+            if ed.result.name != p.name:
+                self.cm.delete_profile(p.name)
+            self.cm.upsert_profile(ed.result)
+            self.cm.save()
+            self._refresh_list()
+
+    def delete_profile(self):
+        p = self.selected_profile()
+        if not p:
+            messagebox.showinfo(APP_NAME, "Select a profile first.")
+            return
+        if not messagebox.askyesno(APP_NAME, f"Delete '{p.name}' from config?\n\n(Folders will NOT be deleted)"):
+            return
+        self.cm.delete_profile(p.name)
+        self.cm.save()
+        self._refresh_list()
+
+    def open_user_data(self):
+        p = self.selected_profile()
+        if not p:
+            messagebox.showinfo(APP_NAME, "Select a profile first.")
+            return
+        open_folder_cross_platform(p.user_data)
+
+    def open_extensions(self):
+        p = self.selected_profile()
+        if not p:
+            messagebox.showinfo(APP_NAME, "Select a profile first.")
+            return
+        open_folder_cross_platform(p.extensions)
+
+    def open_base_dir(self):
+        open_folder_cross_platform(self.var_base_dir.get())
+
+    def save_config(self):
+        self.cm.set_app("vscode_path", norm(self.var_vscode_path.get()))
+        self.cm.set_app("base_dir", norm(self.var_base_dir.get()))
+        self.cm.set_app("open_new_window", "1" if self.var_open_new_window.get() else "0")
+        self.cm.set_app("reuse_existing_window", "1" if self.var_reuse_existing_window.get() else "0")
+        self.cm.set_app("extra_args", (self.var_extra_args.get() or "").strip())
+        self.cm.set_app("theme", self.var_theme.get())
+        self.cm.set_app("ui_scale", self.var_ui_scale.get())
+        self.cm.save()
+        self.status.set(f"Saved config: {config_path()}")
+
+    def reload_config(self):
+        self.cm.load()
+        app = self.cm.get_app()
+        self.var_vscode_path.set(norm(app.get("vscode_path", "")))
+        self.var_base_dir.set(norm(app.get("base_dir", "")))
+        self.var_open_new_window.set(int(app.get("open_new_window", "1")))
+        self.var_reuse_existing_window.set(int(app.get("reuse_existing_window", "0")))
+        self.var_extra_args.set(app.get("extra_args", ""))
+        self.var_theme.set(app.get("theme", "dark"))
+        self.var_ui_scale.set(app.get("ui_scale", "200%"))
+
+        self.palette = self._palette_dark() if self.var_theme.get() == "dark" else self._palette_light()
+        self._apply_style()
+        self._apply_scale()
+        self._refresh_list()
+        self.status.set(f"Reloaded config: {config_path()}")
+
+    def launch_selected(self):
+        self.save_config()
+
+        vscode = norm(self.var_vscode_path.get())
+        if not is_executable_path(vscode):
+            messagebox.showerror(APP_NAME, "VS Code path is invalid. Set it on top.")
+            return
+
+        p = self.selected_profile()
+        if not p:
+            messagebox.showinfo(APP_NAME, "Select a profile first.")
+            return
+
+        p.ensure_folders()
+
+        args = [
+            vscode,
+            "--user-data-dir", p.user_data,
+            "--extensions-dir", p.extensions,
+        ]
+        if self.var_open_new_window.get() and not self.var_reuse_existing_window.get():
+            args.append("--new-window")
+
+        args.extend(split_args(self.var_extra_args.get()))
+
+        try:
+            subprocess.Popen(args, cwd=os.path.dirname(vscode) if os.path.isfile(vscode) else None)
+            self.status.set(f"Launched {p.name}")
+        except Exception as e:
+            messagebox.showerror(APP_NAME, f"Launch failed:\n\n{e}")
+
+
+# -----------------------------
+# Crash-safe launcher
+# -----------------------------
+
+def run_app():
+    app = App()
+    app.mainloop()
+
+def crash_safe_main():
+    try:
+        run_app()
+    except Exception:
+        err = traceback.format_exc()
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with open(crash_log_path(), "a", encoding="utf-8") as f:
+                f.write("\n" + "=" * 80 + "\n")
+                f.write(f"{stamp}\n")
+                f.write(err)
+        except Exception:
+            pass
+
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror(
+                APP_NAME,
+                "App crashed on startup.\n\n"
+                "A crash.log file was created beside the EXE.\n\n"
+                "Error:\n" + err.splitlines()[-1]
+            )
+            root.destroy()
+        except Exception:
+            pass
+
+if __name__ == "__main__":
+    crash_safe_main()
