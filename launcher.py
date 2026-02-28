@@ -174,8 +174,8 @@ class ConfigManager:
         self.cfg["app"].setdefault("open_new_window", "1")
         self.cfg["app"].setdefault("reuse_existing_window", "0")
         self.cfg["app"].setdefault("extra_args", "")
-        self.cfg["app"].setdefault("theme", "dark")
-        self.cfg["app"].setdefault("ui_scale", "200%")
+        self.cfg["app"].setdefault("theme", "Dark")
+        self.cfg["app"].setdefault("ui_scale", "Auto")
 
         if len(self.cfg["profiles"]) == 0:
             base_dir = norm(self.cfg["app"]["base_dir"])
@@ -187,7 +187,7 @@ class ConfigManager:
             self.save()
         else:
             if "ui_scale" not in self.cfg["app"]:
-                self.cfg["app"]["ui_scale"] = "200%"
+                self.cfg["app"]["ui_scale"] = "Auto"
                 self.save()
 
     def _create_default(self) -> None:
@@ -197,8 +197,8 @@ class ConfigManager:
             "open_new_window": "1",
             "reuse_existing_window": "0",
             "extra_args": "",
-            "theme": "dark",
-            "ui_scale": "200%",
+            "theme": "Dark",
+            "ui_scale": "Auto",
         }
         self.cfg["profiles"] = {}
         ensure_dir(app_dir())
@@ -278,6 +278,20 @@ class ProfileEditor(tk.Toplevel):
         self.transient(master)
         self.grab_set()
         self.wait_visibility()
+        self._center_on(master)
+
+    def _center_on(self, master: tk.Tk) -> None:
+        """Center this window on the master window."""
+        self.update_idletasks()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        mx = master.winfo_x()
+        my = master.winfo_y()
+        mw = master.winfo_width()
+        mh = master.winfo_height()
+        x = mx + max(0, (mw - w) // 2)
+        y = my + max(0, (mh - h) // 2)
+        self.geometry(f"+{x}+{y}")
 
     def autofill(self) -> None:
         name = self.var_name.get().strip()
@@ -317,7 +331,16 @@ class ProfileEditor(tk.Toplevel):
 # -----------------------------
 
 class App(tk.Tk):
+    THEME_OPTIONS = ["Dark", "Light"]
     SCALE_OPTIONS = ["Auto", "100%", "125%", "150%", "175%", "200%", "225%", "250%", "300%"]
+
+    @staticmethod
+    def _normalize_theme(raw: str) -> str:
+        v = (raw or "").strip().lower()
+        return "Dark" if v == "dark" else "Light"
+
+    def _theme_is_dark(self) -> bool:
+        return (self.var_theme.get() or "").strip().lower() == "dark"
 
     def __init__(self):
         # DPI awareness on Windows can reduce pixelation
@@ -331,7 +354,7 @@ class App(tk.Tk):
                     pass
         super().__init__()
         self.title(APP_NAME)
-        self.minsize(720, 440)
+        self.minsize(960, 600)
 
         self.cm = ConfigManager(config_path())
         self.cm.load()
@@ -342,8 +365,8 @@ class App(tk.Tk):
         self.var_open_new_window = tk.IntVar(value=int(app.get("open_new_window", "1")))
         self.var_reuse_existing_window = tk.IntVar(value=int(app.get("reuse_existing_window", "0")))
         self.var_extra_args = tk.StringVar(value=app.get("extra_args", ""))
-        self.var_theme = tk.StringVar(value=(app.get("theme", "dark") or "dark"))
-        self.var_ui_scale = tk.StringVar(value=(app.get("ui_scale", "200%") or "200%"))
+        self.var_theme = tk.StringVar(value=self._normalize_theme(app.get("theme", "Dark")))
+        self.var_ui_scale = tk.StringVar(value=(app.get("ui_scale", "Auto") or "Auto"))
 
         self.status = tk.StringVar(value=f"Config: {config_path()}")
 
@@ -362,18 +385,30 @@ class App(tk.Tk):
         except Exception:
             pass
 
-        self.palette = self._palette_dark() if self.var_theme.get() == "dark" else self._palette_light()
+        self.palette = self._palette_dark() if self._theme_is_dark() else self._palette_light()
         self._apply_style()
         self._apply_scale()  # Apply before building UI so scaling is correct from the start
         self._build_ui()
         self._refresh_list()
 
+        # Start centered on screen
+        self.update_idletasks()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        x = max(0, (sw - w) // 2)
+        y = max(0, (sh - h) // 2)
+        self.geometry(f"+{x}+{y}")
+
         # fix “dotted focus” look: prevent focus by default
         self.bind_all("<Button-1>", self._defocus_on_click, add="+")
 
-    def _defocus_on_click(self, _e):
-        # keep focus from sticking on buttons (less ugly on ttk/clam)
+    def _defocus_on_click(self, e):
+        # keep focus from sticking on buttons (less ugly on ttk/clam); skip when clicking a button to avoid extra work
         try:
+            if isinstance(e.widget, ttk.Button):
+                return
             w = self.focus_get()
             if isinstance(w, ttk.Button):
                 self.focus_set()
@@ -449,8 +484,14 @@ class App(tk.Tk):
         self.style.map("Danger.TButton", background=[("active", p["button_hover"]), ("pressed", p["border"])])
 
         self.style.configure("Treeview", background=p["field"], fieldbackground=p["field"], foreground=p["text"], relief="flat", borderwidth=0)
-        self.style.map("Treeview", background=[("selected", p["select"])], foreground=[("selected", "#FFFFFF" if self.var_theme.get() == "dark" else p["text"])])
-        self.style.configure("Treeview.Heading", background=p["panel2"], foreground=p["text"], padding=(6, 4), relief="flat")
+        self.style.map("Treeview", background=[("selected", p["select"])], foreground=[("selected", "#FFFFFF" if self._theme_is_dark() else p["text"])])
+        self.style.configure("Treeview.Heading", background=p["panel2"], foreground=p["text"], padding=(12, 10), relief="flat")
+        if hasattr(self, "body_sep"):
+            self.body_sep.configure(bg=p["border"])
+        if hasattr(self, "header_sep1"):
+            self.header_sep1.configure(bg=p["border"])
+        if hasattr(self, "header_sep2"):
+            self.header_sep2.configure(bg=p["border"])
 
     def _parse_ui_scale(self) -> float | None:
         v = (self.var_ui_scale.get() or "").strip()
@@ -476,7 +517,7 @@ class App(tk.Tk):
 
     def _update_tree_rowheight(self) -> None:
         linespace = self.base_font.metrics("linespace")
-        self.style.configure("Treeview", rowheight=max(int(linespace + 6), 22))
+        self.style.configure("Treeview", rowheight=max(int(linespace + 16), 34))
 
     def _build_ui(self) -> None:
         root = ttk.Frame(self, padding=6)
@@ -506,11 +547,11 @@ class App(tk.Tk):
         self.entry_vscode_path.config(state="disabled")
         self.entry_base_dir.config(state="disabled")
 
-        # Theme + UI Scale aligned right (compact)
+        # Theme + UI Scale aligned right (compact); Theme: Dark / Light (case-sensitive)
         right = ttk.Frame(top, style="Card.TFrame")
         right.grid(row=0, column=4, rowspan=2, sticky="e", padx=(10, 0))
         ttk.Label(right, text="Theme", style="Card.TLabel").grid(row=0, column=0, sticky="e", padx=(0, 4))
-        theme = ttk.Combobox(right, textvariable=self.var_theme, values=["dark", "light"], state="readonly", width=6)
+        theme = ttk.Combobox(right, textvariable=self.var_theme, values=self.THEME_OPTIONS, state="readonly", width=6)
         theme.grid(row=0, column=1, sticky="e")
         theme.bind("<<ComboboxSelected>>", lambda _e: self._on_theme_change())
 
@@ -520,54 +561,73 @@ class App(tk.Tk):
         scale.bind("<<ComboboxSelected>>", lambda _e: self._on_scale_change())
 
         # ---- Middle panel
-        mid = ttk.Frame(root, style="Card.TFrame", padding=6)
+        mid = ttk.Frame(root, style="Card.TFrame", padding=8)
         mid.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
         mid.columnconfigure(0, weight=1)
-        mid.rowconfigure(1, weight=1)
+        mid.rowconfigure(0, weight=1)
 
-        hdr = ttk.Frame(mid, style="Card.TFrame")
-        hdr.grid(row=0, column=0, sticky="ew")
-        hdr.columnconfigure(1, weight=1)
-        ttk.Label(hdr, text="Profiles", style="Card.TLabel", font=(self.base_font.cget("family"), 10, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(hdr, text="This is not VSCode Profiles", style="Warning.TLabel").grid(row=0, column=1, sticky="w", padx=(8, 0))
-
-        # Responsive body: left expands; right fixed width
+        # Body: tree + separator + rail
         body = ttk.Frame(mid)
-        body.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
+        body.grid(row=0, column=0, sticky="nsew")
         body.columnconfigure(0, weight=1)
-        body.columnconfigure(1, weight=0)   # IMPORTANT: don't stretch the right rail
+        body.columnconfigure(1, weight=0)
+        body.columnconfigure(2, weight=0)
         body.rowconfigure(0, weight=1)
 
-        # Left: table
-        table = ttk.Frame(body)
+        # Left: table (custom header with separators + spacing)
+        table = ttk.Frame(body, padding=(0, 4))
         table.grid(row=0, column=0, sticky="nsew")
         table.columnconfigure(0, weight=1)
-        table.rowconfigure(0, weight=1)
+        table.rowconfigure(0, weight=0)
+        table.rowconfigure(1, weight=1)
+        table.rowconfigure(2, weight=0)
+
+        # Custom header row: titles + vertical separators (title only)
+        header_frm = ttk.Frame(table, style="Card.TFrame")
+        header_frm.grid(row=0, column=0, sticky="ew", pady=(0, 4))
+        header_frm.columnconfigure(0, weight=0, minsize=100)
+        header_frm.columnconfigure(1, weight=0, minsize=2)
+        header_frm.columnconfigure(2, weight=1, minsize=180)
+        header_frm.columnconfigure(3, weight=0, minsize=2)
+        header_frm.columnconfigure(4, weight=1, minsize=180)
+        ttk.Label(header_frm, text="Profile", style="Card.TLabel", font=(self.base_font.cget("family"), self.base_font.cget("size"), "bold")).grid(row=0, column=0, sticky="w", padx=(12, 8), pady=6)
+        self.header_sep1 = tk.Frame(header_frm, width=2, bg=self.palette["border"], highlightthickness=0)
+        self.header_sep1.grid(row=0, column=1, sticky="ns")
+        self.header_sep1.grid_propagate(False)
+        ttk.Label(header_frm, text="User Data Dir", style="Card.TLabel", font=(self.base_font.cget("family"), self.base_font.cget("size"), "bold")).grid(row=0, column=2, sticky="w", padx=(12, 8), pady=6)
+        self.header_sep2 = tk.Frame(header_frm, width=2, bg=self.palette["border"], highlightthickness=0)
+        self.header_sep2.grid(row=0, column=3, sticky="ns")
+        self.header_sep2.grid_propagate(False)
+        ttk.Label(header_frm, text="Extensions Dir", style="Card.TLabel", font=(self.base_font.cget("family"), self.base_font.cget("size"), "bold")).grid(row=0, column=4, sticky="w", padx=(12, 8), pady=6)
 
         cols = ("name", "user_data", "extensions")
-        self.tree = ttk.Treeview(table, columns=cols, show="headings")
-        self.tree.grid(row=0, column=0, sticky="nsew")
-
-        self.tree.heading("name", text="Profile")
-        self.tree.heading("user_data", text="User Data Dir")
-        self.tree.heading("extensions", text="Extensions Dir")
-        self.tree.column("name", width=80, stretch=False, anchor="w")
-        self.tree.column("user_data", width=200, stretch=True, anchor="w")
-        self.tree.column("extensions", width=200, stretch=True, anchor="w")
+        # show="headings" would show a header row; use "" so only our custom header row is visible
+        self.tree = ttk.Treeview(table, columns=cols, show="headings", height=10, takefocus=False)
+        self.tree.grid(row=1, column=0, sticky="nsew")
+        # Hide the native heading row (no text + zero height via style not possible, so we use show="" after setting columns)
+        self.tree["show"] = ""
+        self.tree.column("name", width=100, minwidth=80, stretch=False, anchor="w")
+        self.tree.column("user_data", width=280, minwidth=180, stretch=True, anchor="w")
+        self.tree.column("extensions", width=280, minwidth=180, stretch=True, anchor="w")
 
         vsb = ttk.Scrollbar(table, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
-        vsb.grid(row=0, column=1, sticky="ns", padx=(4, 0))
+        vsb.grid(row=1, column=1, sticky="ns", padx=(6, 0))
 
         hsb = ttk.Scrollbar(table, orient="horizontal", command=self.tree.xview)
         self.tree.configure(xscrollcommand=hsb.set)
-        hsb.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+        hsb.grid(row=2, column=0, sticky="ew", pady=(6, 0))
 
         self.tree.bind("<Double-1>", lambda _e: self.launch_selected())
 
+        # Thin divider between tree and rail (tk.Frame is lighter than ttk.Separator on resize)
+        self.body_sep = tk.Frame(body, width=2, bg=self.palette["border"], highlightthickness=0)
+        self.body_sep.grid(row=0, column=1, sticky="ns", padx=(4, 4))
+        self.body_sep.grid_propagate(False)
+
         # Right: fixed narrow rail
         rail = ttk.Frame(body, width=130)
-        rail.grid(row=0, column=1, sticky="ns", padx=(6, 0))
+        rail.grid(row=0, column=2, sticky="ns", padx=(4, 0))
         rail.grid_propagate(False)  # IMPORTANT: enforce width
 
         def rbtn(text, cmd, style="TButton", pady=(0, 4)):
@@ -652,12 +712,13 @@ class App(tk.Tk):
             self.entry_base_dir.config(state="disabled")
 
     def _on_theme_change(self):
-        self.palette = self._palette_dark() if self.var_theme.get() == "dark" else self._palette_light()
+        self.palette = self._palette_dark() if self._theme_is_dark() else self._palette_light()
         self._apply_style()
         self._apply_scale()
 
     def _on_scale_change(self):
         self._apply_scale()
+        self._apply_style()  # Reapply styles so fonts/row heights reflect new scaling
 
     def add_profile(self):
         ed = ProfileEditor(self, "Add Profile", None, self.var_base_dir.get())
@@ -734,10 +795,10 @@ class App(tk.Tk):
         self.var_open_new_window.set(int(app.get("open_new_window", "1")))
         self.var_reuse_existing_window.set(int(app.get("reuse_existing_window", "0")))
         self.var_extra_args.set(app.get("extra_args", ""))
-        self.var_theme.set(app.get("theme", "dark"))
-        self.var_ui_scale.set(app.get("ui_scale", "200%"))
+        self.var_theme.set(self._normalize_theme(app.get("theme", "Dark")))
+        self.var_ui_scale.set(app.get("ui_scale", "Auto") or "Auto")
 
-        self.palette = self._palette_dark() if self.var_theme.get() == "dark" else self._palette_light()
+        self.palette = self._palette_dark() if self._theme_is_dark() else self._palette_light()
         self._apply_style()
         self._apply_scale()
         self._refresh_list()
