@@ -8,6 +8,12 @@
 
 Easily launch VS Code with **separate user-data and extension data** per profile. Use different profiles to sign in to different accounts in extensions (e.g. multiple GitHub accounts, different marketplace logins) without switching Windows users. Manage profiles and launch per profile with one click.
 
+**Preview**
+
+| Dark mode | Light mode |
+|-----------|------------|
+| ![Dark mode](assets/s1.jpg) | ![Light mode](assets/s2.jpg) |
+
 ---
 
 ## Requirements
