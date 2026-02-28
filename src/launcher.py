@@ -25,6 +25,9 @@ import tkinter.font as tkfont
 
 APP_NAME = "VSCode MultiData by Adam Natad"
 CONFIG_FILENAME = "config.ini"
+REPORT_BUGS_URL = "https://github.com/AdamNatad/VSCodeMultiData/issues"
+
+_app_ref: "App | None" = None  # Set by App for global excepthook
 
 
 # -----------------------------
@@ -504,6 +507,66 @@ class SaveConfirmDialog(tk.Toplevel):
 
 
 # -----------------------------
+# Report bugs / issues modal
+# -----------------------------
+
+class ReportBugsDialog(tk.Toplevel):
+    """Themed dialog to report bugs or post issues at GitHub; optional error_message for global excepthook."""
+
+    def __init__(self, master: "App", error_message: str | None = None):
+        super().__init__(master)
+        self.title("Report Bugs?")
+        self.resizable(False, False)
+        _icon = app_icon_path()
+        if os.path.isfile(_icon):
+            try:
+                self.iconbitmap(_icon)
+            except Exception:
+                pass
+        self.configure(bg=master.palette["bg"])
+
+        outer = ttk.Frame(self, style="Card.TFrame", padding=16)
+        outer.grid(row=0, column=0, sticky="nsew")
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        if error_message:
+            text = f"An unexpected error occurred.\n\n{error_message}\n\nPlease report it at:\n{REPORT_BUGS_URL}"
+        else:
+            text = f"Report bugs or post issues at:\n\n{REPORT_BUGS_URL}"
+        ttk.Label(outer, text=text, style="Card.TLabel", wraplength=360).grid(row=0, column=0, sticky="w", pady=(0, 16))
+        btn_row = ttk.Frame(outer)
+        btn_row.grid(row=1, column=0, sticky="e")
+        ttk.Button(btn_row, text="Copy Url", style="Accent.TButton", command=self._copy_url, takefocus=False, cursor="hand2").pack(side="left", padx=(0, 8))
+        ttk.Button(btn_row, text="OK", command=self.destroy, takefocus=False, cursor="hand2").pack(side="left")
+
+        self.transient(master)
+        self.bind("<Return>", lambda _e: self.destroy())
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.grab_set()
+        self.wait_visibility()
+        self._center_on(master)
+        self.focus_force()
+
+    def _copy_url(self) -> None:
+        self.clipboard_clear()
+        self.clipboard_append(REPORT_BUGS_URL)
+        self.update()
+
+    def _center_on(self, master: tk.Misc) -> None:
+        self.update_idletasks()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        mx = master.winfo_x()
+        my = master.winfo_y()
+        mw = master.winfo_width()
+        mh = master.winfo_height()
+        x = mx + max(0, (mw - w) // 2)
+        y = my + max(0, (mh - h) // 2)
+        self.geometry(f"+{x}+{y}")
+
+
+# -----------------------------
 # Save and relaunch confirmation (Yes / No)
 # -----------------------------
 
@@ -707,6 +770,9 @@ class App(tk.Tk):
         # fix “dotted focus” look: prevent focus by default
         self.bind_all("<Button-1>", self._defocus_on_click, add="+")
 
+        global _app_ref
+        _app_ref = self
+
     def _enforce_min_size(self, event=None):
         """Keep window from being resized smaller than MIN so the right menu stays visible."""
         if event and event.widget != self:
@@ -726,6 +792,14 @@ class App(tk.Tk):
                 self.focus_set()
         except Exception:
             pass
+
+    def _report_bugs_enter(self, _e=None) -> None:
+        if hasattr(self, "report_bugs_lbl"):
+            self.report_bugs_lbl.config(fg="red")
+
+    def _report_bugs_leave(self, _e=None) -> None:
+        if hasattr(self, "report_bugs_lbl"):
+            self.report_bugs_lbl.config(fg=self.palette["muted"])
 
     def _palette_dark(self) -> dict:
         return {
@@ -863,6 +937,8 @@ class App(tk.Tk):
             self.header_sep1.configure(bg=p["border"])
         if hasattr(self, "header_sep2"):
             self.header_sep2.configure(bg=p["border"])
+        if hasattr(self, "report_bugs_lbl"):
+            self.report_bugs_lbl.config(fg=p["muted"], bg=p["bg"])
 
     def _parse_ui_scale(self) -> float | None:
         v = (self.var_ui_scale.get() or "").strip()
@@ -1024,11 +1100,23 @@ class App(tk.Tk):
         rbtn("Save Config", self.save_config)
         rbtn("Reload", self.reload_config, pady=(0, 0))
 
-        # Status line
+        # Status line (config path left, Report Bugs? right)
         status = ttk.Frame(root, padding=(2, 4, 2, 0))
         status.grid(row=2, column=0, sticky="ew")
         status.columnconfigure(0, weight=1)
         ttk.Label(status, textvariable=self.status, style="Muted.TLabel").grid(row=0, column=0, sticky="w")
+        self.report_bugs_lbl = tk.Label(
+            status,
+            text="Report Bugs?",
+            fg=self.palette["muted"],
+            bg=self.palette["bg"],
+            cursor="hand2",
+            font=(self.base_font.cget("family"), self.base_font.cget("size")),
+        )
+        self.report_bugs_lbl.grid(row=0, column=1, sticky="e")
+        self.report_bugs_lbl.bind("<Enter>", self._report_bugs_enter)
+        self.report_bugs_lbl.bind("<Leave>", self._report_bugs_leave)
+        self.report_bugs_lbl.bind("<Button-1>", lambda _e: ReportBugsDialog(self))
 
     def _refresh_list(self):
         for item in self.tree.get_children():
@@ -1168,11 +1256,27 @@ class App(tk.Tk):
 
     def _relaunch(self) -> None:
         """Start a new process and exit so the new UI scale takes effect."""
-        cwd = app_dir()
-        if getattr(sys, "frozen", False):
-            subprocess.Popen([sys.executable], cwd=cwd)
-        else:
-            subprocess.Popen([sys.executable, os.path.abspath(__file__)], cwd=cwd)
+        try:
+            cwd = app_dir()
+            if getattr(sys, "frozen", False) and platform.system() == "Windows":
+                os.startfile(sys.executable)
+            else:
+                kwargs = {"cwd": cwd}
+                if platform.system() == "Windows":
+                    kwargs["creationflags"] = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+                if getattr(sys, "frozen", False):
+                    subprocess.Popen([sys.executable], **kwargs)
+                else:
+                    subprocess.Popen([sys.executable, os.path.abspath(__file__)], **kwargs)
+            self.after(600, self._exit_after_relaunch)
+        except Exception:
+            InfoDialog(
+                self,
+                "Auto relaunch failed",
+                "Auto relaunch failed. You can manually close and open the program to apply the new UI scale.",
+            )
+
+    def _exit_after_relaunch(self) -> None:
         self.quit()
         sys.exit(0)
 
@@ -1233,10 +1337,43 @@ class App(tk.Tk):
 
 
 # -----------------------------
+# Global excepthook (report bugs modal)
+# -----------------------------
+
+def _global_excepthook(exc_type: type, exc_value: BaseException, exc_tb) -> None:
+    """Log uncaught exceptions to crash.log and show report-bugs modal or fallback message."""
+    err = traceback.format_exc()
+    stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with open(crash_log_path(), "a", encoding="utf-8") as f:
+            f.write("\n" + "=" * 80 + "\n")
+            f.write(f"{stamp}\n")
+            f.write(err)
+    except Exception:
+        pass
+    short = (str(exc_value) or exc_type.__name__).strip() or "Unknown error"
+    try:
+        if _app_ref and _app_ref.winfo_exists():
+            _app_ref.after(0, lambda: ReportBugsDialog(_app_ref, error_message=short))
+        else:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror(
+                APP_NAME,
+                f"An unexpected error occurred.\n\n{short}\n\n"
+                f"Please report at: {REPORT_BUGS_URL}",
+            )
+            root.destroy()
+    except Exception:
+        pass
+
+
+# -----------------------------
 # Crash-safe launcher
 # -----------------------------
 
 def run_app():
+    sys.excepthook = _global_excepthook
     app = App()
     app.mainloop()
 
