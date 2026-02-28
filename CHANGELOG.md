@@ -17,7 +17,7 @@ First release.
 - Themed modals for remove profile, save config, UI scale, and report bugs; Copy Url in report-bugs dialog; footer “Report Bugs?” (red on hover).
 - Min window size 1024×620; right rail always visible.
 - App icon (PNG → app.ico); all windows use it.
-- Build: `python build.py` → portable ZIP and Inno Setup installer. Install path: `C:\Program Files\VSMultiData\`; Users get write so config/crash work. Support URL: natadtech.com; Help: natadtech.com/adam-natad.
+- Build: `python build.py` → portable ZIP and Inno Setup installer. Install path: `C:\Program Files\VSCodeMD\`; Users get write so config/crash work. Support URL: natadtech.com; Help: natadtech.com/adam-natad.
 - Global excepthook: uncaught errors go to crash.log and open report-bugs modal when possible.
 
 ### Fixed

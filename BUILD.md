@@ -68,7 +68,7 @@ Or open `build/installer.iss` in Inno Setup 6 and use **Build → Compile**.
 
 ## Installer behaviour
 
-- **Install path:** `C:\Program Files\VSMultiData\`
+- **Install path:** `C:\Program Files\VSCodeMD\`
 - **Permissions:** Users get write access to the install folder (config and crash log beside the EXE).
 - **Shortcuts:** Start Menu; optional Desktop icon.
 - **Support URL:** natadtech.com · **Help URL:** natadtech.com/adam-natad

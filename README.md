@@ -30,7 +30,7 @@ Easily launch VS Code with **separate user-data and extension data** per profile
 
 1. Download **VSCodeMultiData-Setup.exe** from [Releases](https://github.com/AdamNatad/VSCodeMultiData/releases).
 2. Run the installer (admin required).
-3. Install path: `C:\Program Files\VSMultiData\`.
+3. Install path: `C:\Program Files\VSCodeMD\`.
 4. Launch from the Start Menu (or Desktop) shortcut.
 
 Config and crash log are created in the install folder on first run.

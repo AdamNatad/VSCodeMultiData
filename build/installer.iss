@@ -3,6 +3,7 @@
 ; Paths: relative to this file (build/); ..\ = project root
 
 #define MyAppName "VSCode MultiData by Adam Natad"
+#define MyAppShortName "VSCodeMD"
 #define MyAppPublisher "Adam Natad"
 #define MyAppSupportURL "https://natadtech.com"
 #define MyAppHelpURL "https://natadtech.com/adam-natad"
@@ -16,8 +17,8 @@ AppVerName={#MyAppName} (v1.0.0)
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppHelpURL}
 AppSupportURL={#MyAppSupportURL}
-DefaultDirName={autopf}\VSMultiData
-DefaultGroupName={#MyAppName}
+DefaultDirName={autopf}\{#MyAppShortName}
+DefaultGroupName={#MyAppShortName}
 DisableProgramGroupPage=yes
 SetupIconFile=..\app.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -38,12 +39,12 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"
-Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{group}\{#MyAppShortName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{group}\{cm:UninstallProgram,{#MyAppShortName}}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\{#MyAppShortName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\{#MyAppExeName}"
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppShortName}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);
