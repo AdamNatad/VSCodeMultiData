@@ -16,6 +16,7 @@ import sys
 import shutil
 import platform
 import subprocess
+import ctypes
 import configparser
 import traceback
 import datetime
@@ -319,9 +320,18 @@ class App(tk.Tk):
     SCALE_OPTIONS = ["Auto", "100%", "125%", "150%", "175%", "200%", "225%", "250%", "300%"]
 
     def __init__(self):
+        # DPI awareness on Windows can reduce pixelation
+        if platform.system() == "Windows":
+            try:
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+            except Exception:
+                try:
+                    ctypes.windll.user32.SetProcessDPIAware()
+                except Exception:
+                    pass
         super().__init__()
         self.title(APP_NAME)
-        self.minsize(900, 560)
+        self.minsize(720, 440)
 
         self.cm = ConfigManager(config_path())
         self.cm.load()
@@ -354,9 +364,9 @@ class App(tk.Tk):
 
         self.palette = self._palette_dark() if self.var_theme.get() == "dark" else self._palette_light()
         self._apply_style()
+        self._apply_scale()  # Apply before building UI so scaling is correct from the start
         self._build_ui()
         self._refresh_list()
-        self._apply_scale()
 
         # fix “dotted focus” look: prevent focus by default
         self.bind_all("<Button-1>", self._defocus_on_click, add="+")
@@ -379,7 +389,11 @@ class App(tk.Tk):
             "text": "#D4D4D4",
             "muted": "#9DA2A6",
             "accent": "#007ACC",
+            "accent_hover": "#1A8AD4",
             "danger": "#F14C4C",
+            "danger_hover": "#FF6B6B",
+            "button_hover": "#3C3C3C",
+            "warning": "#F14C4C",
             "field": "#1F1F1F",
             "select": "#094771",
         }
@@ -393,7 +407,11 @@ class App(tk.Tk):
             "text": "#1E1E1E",
             "muted": "#5A5A5A",
             "accent": "#007ACC",
+            "accent_hover": "#3399DD",
             "danger": "#C62828",
+            "danger_hover": "#E53935",
+            "button_hover": "#E8E8E8",
+            "warning": "#C62828",
             "field": "#FFFFFF",
             "select": "#CFE8FF",
         }
@@ -406,6 +424,9 @@ class App(tk.Tk):
         self.style.configure("TFrame", background=p["bg"])
         self.style.configure("TLabel", background=p["bg"], foreground=p["text"])
         self.style.configure("Muted.TLabel", background=p["bg"], foreground=p["muted"])
+        # Labels on cards must use panel background so they don't show a different color
+        self.style.configure("Card.TLabel", background=p["panel"], foreground=p["text"])
+        self.style.configure("Warning.TLabel", background=p["panel"], foreground=p["warning"], font=(self.base_font.cget("family"), self.base_font.cget("size"), "normal"))
 
         self.style.configure("Card.TFrame", background=p["panel"], relief="flat", borderwidth=1)
 
@@ -413,23 +434,23 @@ class App(tk.Tk):
         self.style.configure("TCombobox", fieldbackground=p["field"], foreground=p["text"])
         self.style.map("TCombobox", fieldbackground=[("readonly", p["field"])])
 
-        # Compact buttons
-        self.style.configure("TButton", background=p["panel2"], foreground=p["text"], padding=(10, 6), relief="flat")
-        self.style.map("TButton", background=[("active", p["border"])])
+        # Compact buttons with clearer hover (active) feedback
+        self.style.configure("TButton", background=p["panel2"], foreground=p["text"], padding=(6, 4), relief="flat")
+        self.style.map("TButton", background=[("active", p["button_hover"]), ("pressed", p["border"])])
         try:
             self.style.configure("TButton", focusthickness=0, focuspadding=0)
         except Exception:
             pass
 
-        self.style.configure("Accent.TButton", background=p["accent"], foreground="#FFFFFF", padding=(10, 8), relief="flat")
-        self.style.map("Accent.TButton", background=[("active", p["accent"])])
+        self.style.configure("Accent.TButton", background=p["accent"], foreground="#FFFFFF", padding=(6, 5), relief="flat")
+        self.style.map("Accent.TButton", background=[("active", p["accent_hover"]), ("pressed", p["accent"])])
 
-        self.style.configure("Danger.TButton", background=p["panel2"], foreground=p["danger"], padding=(10, 6), relief="flat")
-        self.style.map("Danger.TButton", background=[("active", p["border"])])
+        self.style.configure("Danger.TButton", background=p["panel2"], foreground=p["danger"], padding=(6, 4), relief="flat")
+        self.style.map("Danger.TButton", background=[("active", p["button_hover"]), ("pressed", p["border"])])
 
         self.style.configure("Treeview", background=p["field"], fieldbackground=p["field"], foreground=p["text"], relief="flat", borderwidth=0)
         self.style.map("Treeview", background=[("selected", p["select"])], foreground=[("selected", "#FFFFFF" if self.var_theme.get() == "dark" else p["text"])])
-        self.style.configure("Treeview.Heading", background=p["panel2"], foreground=p["text"], padding=(8, 5), relief="flat")
+        self.style.configure("Treeview.Heading", background=p["panel2"], foreground=p["text"], padding=(6, 4), relief="flat")
 
     def _parse_ui_scale(self) -> float | None:
         v = (self.var_ui_scale.get() or "").strip()
@@ -455,10 +476,10 @@ class App(tk.Tk):
 
     def _update_tree_rowheight(self) -> None:
         linespace = self.base_font.metrics("linespace")
-        self.style.configure("Treeview", rowheight=max(int(linespace + 10), 26))
+        self.style.configure("Treeview", rowheight=max(int(linespace + 6), 22))
 
     def _build_ui(self) -> None:
-        root = ttk.Frame(self, padding=10)
+        root = ttk.Frame(self, padding=6)
         root.grid(row=0, column=0, sticky="nsew")
         self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
@@ -466,47 +487,53 @@ class App(tk.Tk):
         root.rowconfigure(1, weight=1)
 
         # ---- Top panel (compact)
-        top = ttk.Frame(root, style="Card.TFrame", padding=10)
+        top = ttk.Frame(root, style="Card.TFrame", padding=6)
         top.grid(row=0, column=0, sticky="ew")
         top.columnconfigure(1, weight=1)
 
-        ttk.Label(top, text="VS Code Path").grid(row=0, column=0, sticky="w")
-        ttk.Entry(top, textvariable=self.var_vscode_path).grid(row=0, column=1, sticky="ew", padx=(8, 8))
-        ttk.Button(top, text="Browse", command=self._browse_vscode, takefocus=False).grid(row=0, column=2, padx=(0, 6))
+        ttk.Label(top, text="VS Code Path", style="Card.TLabel").grid(row=0, column=0, sticky="w")
+        self.entry_vscode_path = ttk.Entry(top, textvariable=self.var_vscode_path)
+        self.entry_vscode_path.grid(row=0, column=1, sticky="ew", padx=(6, 6))
+        ttk.Button(top, text="Browse", command=self._browse_vscode, takefocus=False).grid(row=0, column=2, padx=(0, 4))
         ttk.Button(top, text="Detect", command=self._detect_vscode, takefocus=False).grid(row=0, column=3)
 
-        ttk.Label(top, text="Base Dir").grid(row=1, column=0, sticky="w", pady=(8, 0))
-        ttk.Entry(top, textvariable=self.var_base_dir).grid(row=1, column=1, sticky="ew", padx=(8, 8), pady=(8, 0))
-        ttk.Button(top, text="Browse", command=self._browse_base, takefocus=False).grid(row=1, column=2, padx=(0, 6), pady=(8, 0))
+        ttk.Label(top, text="Base Dir", style="Card.TLabel").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.entry_base_dir = ttk.Entry(top, textvariable=self.var_base_dir)
+        self.entry_base_dir.grid(row=1, column=1, sticky="ew", padx=(6, 6), pady=(6, 0))
+        ttk.Button(top, text="Browse", command=self._browse_base, takefocus=False).grid(row=1, column=2, padx=(0, 4), pady=(6, 0))
+
+        # Read-only: change only via Browse/Detect
+        self.entry_vscode_path.config(state="disabled")
+        self.entry_base_dir.config(state="disabled")
 
         # Theme + UI Scale aligned right (compact)
-        right = ttk.Frame(top)
-        right.grid(row=0, column=4, rowspan=2, sticky="e", padx=(14, 0))
-        ttk.Label(right, text="Theme").grid(row=0, column=0, sticky="e", padx=(0, 6))
-        theme = ttk.Combobox(right, textvariable=self.var_theme, values=["dark", "light"], state="readonly", width=8)
+        right = ttk.Frame(top, style="Card.TFrame")
+        right.grid(row=0, column=4, rowspan=2, sticky="e", padx=(10, 0))
+        ttk.Label(right, text="Theme", style="Card.TLabel").grid(row=0, column=0, sticky="e", padx=(0, 4))
+        theme = ttk.Combobox(right, textvariable=self.var_theme, values=["dark", "light"], state="readonly", width=6)
         theme.grid(row=0, column=1, sticky="e")
         theme.bind("<<ComboboxSelected>>", lambda _e: self._on_theme_change())
 
-        ttk.Label(right, text="UI Scale").grid(row=1, column=0, sticky="e", padx=(0, 6), pady=(8, 0))
-        scale = ttk.Combobox(right, textvariable=self.var_ui_scale, values=self.SCALE_OPTIONS, state="readonly", width=8)
-        scale.grid(row=1, column=1, sticky="e", pady=(8, 0))
+        ttk.Label(right, text="UI Scale", style="Card.TLabel").grid(row=1, column=0, sticky="e", padx=(0, 4), pady=(6, 0))
+        scale = ttk.Combobox(right, textvariable=self.var_ui_scale, values=self.SCALE_OPTIONS, state="readonly", width=6)
+        scale.grid(row=1, column=1, sticky="e", pady=(6, 0))
         scale.bind("<<ComboboxSelected>>", lambda _e: self._on_scale_change())
 
         # ---- Middle panel
-        mid = ttk.Frame(root, style="Card.TFrame", padding=10)
-        mid.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
+        mid = ttk.Frame(root, style="Card.TFrame", padding=6)
+        mid.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
         mid.columnconfigure(0, weight=1)
         mid.rowconfigure(1, weight=1)
 
-        hdr = ttk.Frame(mid)
+        hdr = ttk.Frame(mid, style="Card.TFrame")
         hdr.grid(row=0, column=0, sticky="ew")
         hdr.columnconfigure(1, weight=1)
-        ttk.Label(hdr, text="Profiles", font=(self.base_font.cget("family"), 11, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(hdr, text="Launcher labels only (not VS Code Profiles).", style="Muted.TLabel").grid(row=0, column=1, sticky="w", padx=(10, 0))
+        ttk.Label(hdr, text="Profiles", style="Card.TLabel", font=(self.base_font.cget("family"), 10, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(hdr, text="This is not VSCode Profiles", style="Warning.TLabel").grid(row=0, column=1, sticky="w", padx=(8, 0))
 
         # Responsive body: left expands; right fixed width
         body = ttk.Frame(mid)
-        body.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        body.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
         body.columnconfigure(0, weight=1)
         body.columnconfigure(1, weight=0)   # IMPORTANT: don't stretch the right rail
         body.rowconfigure(0, weight=1)
@@ -524,49 +551,48 @@ class App(tk.Tk):
         self.tree.heading("name", text="Profile")
         self.tree.heading("user_data", text="User Data Dir")
         self.tree.heading("extensions", text="Extensions Dir")
-        self.tree.column("name", width=110, stretch=False, anchor="w")
-        self.tree.column("user_data", width=420, stretch=True, anchor="w")
-        self.tree.column("extensions", width=420, stretch=True, anchor="w")
+        self.tree.column("name", width=80, stretch=False, anchor="w")
+        self.tree.column("user_data", width=200, stretch=True, anchor="w")
+        self.tree.column("extensions", width=200, stretch=True, anchor="w")
 
         vsb = ttk.Scrollbar(table, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
-        vsb.grid(row=0, column=1, sticky="ns", padx=(6, 0))
+        vsb.grid(row=0, column=1, sticky="ns", padx=(4, 0))
 
-        # (Optional) keep horizontal scrollbar, but compact
         hsb = ttk.Scrollbar(table, orient="horizontal", command=self.tree.xview)
         self.tree.configure(xscrollcommand=hsb.set)
-        hsb.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        hsb.grid(row=1, column=0, sticky="ew", pady=(4, 0))
 
         self.tree.bind("<Double-1>", lambda _e: self.launch_selected())
 
         # Right: fixed narrow rail
-        rail = ttk.Frame(body, width=180)
-        rail.grid(row=0, column=1, sticky="ns", padx=(10, 0))
+        rail = ttk.Frame(body, width=130)
+        rail.grid(row=0, column=1, sticky="ns", padx=(6, 0))
         rail.grid_propagate(False)  # IMPORTANT: enforce width
 
-        def rbtn(text, cmd, style="TButton", pady=(0, 6)):
+        def rbtn(text, cmd, style="TButton", pady=(0, 4)):
             b = ttk.Button(rail, text=text, command=cmd, style=style, takefocus=False)
             b.pack(fill="x", pady=pady)
             return b
 
-        rbtn("Launch", self.launch_selected, style="Accent.TButton", pady=(0, 8))
+        rbtn("Launch", self.launch_selected, style="Accent.TButton", pady=(0, 4))
         rbtn("Add", self.add_profile)
         rbtn("Edit", self.edit_profile)
-        rbtn("Delete", self.delete_profile, style="Danger.TButton", pady=(0, 8))
+        rbtn("Delete", self.delete_profile, style="Danger.TButton", pady=(0, 4))
 
-        ttk.Separator(rail).pack(fill="x", pady=(6, 10))
+        ttk.Separator(rail).pack(fill="x", pady=(4, 6))
 
         rbtn("Open User Data", self.open_user_data)
         rbtn("Open Extensions", self.open_extensions)
-        rbtn("Open Base Dir", self.open_base_dir, pady=(0, 8))
+        rbtn("Open Base Dir", self.open_base_dir, pady=(0, 4))
 
-        ttk.Separator(rail).pack(fill="x", pady=(6, 10))
+        ttk.Separator(rail).pack(fill="x", pady=(4, 6))
 
         rbtn("Save Config", self.save_config)
         rbtn("Reload", self.reload_config, pady=(0, 0))
 
         # Status line
-        status = ttk.Frame(root, padding=(2, 8, 2, 0))
+        status = ttk.Frame(root, padding=(2, 4, 2, 0))
         status.grid(row=2, column=0, sticky="ew")
         status.columnconfigure(0, weight=1)
         ttk.Label(status, textvariable=self.status, style="Muted.TLabel").grid(row=0, column=0, sticky="w")
@@ -604,33 +630,34 @@ class App(tk.Tk):
         else:
             fp = filedialog.askopenfilename(title="Select VS Code launcher/binary (code)")
         if fp:
+            self.entry_vscode_path.config(state="normal")
             self.var_vscode_path.set(norm(fp))
-            self.save_config()
+            self.entry_vscode_path.config(state="disabled")
 
     def _detect_vscode(self):
         p = autodetect_vscode_path()
         if p:
+            self.entry_vscode_path.config(state="normal")
             self.var_vscode_path.set(norm(p))
+            self.entry_vscode_path.config(state="disabled")
             self.status.set(f"Detected VS Code: {p}")
-            self.save_config()
         else:
             messagebox.showwarning(APP_NAME, "Could not auto-detect VS Code.")
 
     def _browse_base(self):
         d = filedialog.askdirectory(title="Select Base Directory")
         if d:
+            self.entry_base_dir.config(state="normal")
             self.var_base_dir.set(norm(d))
-            self.save_config()
+            self.entry_base_dir.config(state="disabled")
 
     def _on_theme_change(self):
         self.palette = self._palette_dark() if self.var_theme.get() == "dark" else self._palette_light()
         self._apply_style()
         self._apply_scale()
-        self.save_config()
 
     def _on_scale_change(self):
         self._apply_scale()
-        self.save_config()
 
     def add_profile(self):
         ed = ProfileEditor(self, "Add Profile", None, self.var_base_dir.get())
@@ -640,7 +667,6 @@ class App(tk.Tk):
                 messagebox.showerror(APP_NAME, "Profile name already exists.")
                 return
             self.cm.upsert_profile(ed.result)
-            self.cm.save()
             self._refresh_list()
 
     def edit_profile(self):
@@ -657,7 +683,6 @@ class App(tk.Tk):
             if ed.result.name != p.name:
                 self.cm.delete_profile(p.name)
             self.cm.upsert_profile(ed.result)
-            self.cm.save()
             self._refresh_list()
 
     def delete_profile(self):
@@ -665,10 +690,9 @@ class App(tk.Tk):
         if not p:
             messagebox.showinfo(APP_NAME, "Select a profile first.")
             return
-        if not messagebox.askyesno(APP_NAME, f"Delete '{p.name}' from config?\n\n(Folders will NOT be deleted)"):
+        if not messagebox.askyesno(APP_NAME, f"Delete profile '{p.name}'?\n\n(Folders will NOT be deleted. Click Save Config to write changes to file.)"):
             return
         self.cm.delete_profile(p.name)
-        self.cm.save()
         self._refresh_list()
 
     def open_user_data(self):
@@ -689,6 +713,8 @@ class App(tk.Tk):
         open_folder_cross_platform(self.var_base_dir.get())
 
     def save_config(self):
+        if not messagebox.askyesno(APP_NAME, "Save configuration to file?"):
+            return
         self.cm.set_app("vscode_path", norm(self.var_vscode_path.get()))
         self.cm.set_app("base_dir", norm(self.var_base_dir.get()))
         self.cm.set_app("open_new_window", "1" if self.var_open_new_window.get() else "0")
@@ -698,6 +724,7 @@ class App(tk.Tk):
         self.cm.set_app("ui_scale", self.var_ui_scale.get())
         self.cm.save()
         self.status.set(f"Saved config: {config_path()}")
+        messagebox.showinfo(APP_NAME, "Configuration saved.")
 
     def reload_config(self):
         self.cm.load()
@@ -717,8 +744,6 @@ class App(tk.Tk):
         self.status.set(f"Reloaded config: {config_path()}")
 
     def launch_selected(self):
-        self.save_config()
-
         vscode = norm(self.var_vscode_path.get())
         if not is_executable_path(vscode):
             messagebox.showerror(APP_NAME, "VS Code path is invalid. Set it on top.")
